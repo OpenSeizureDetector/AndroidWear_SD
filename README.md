@@ -10,6 +10,10 @@ The App contains the following major classes to provide the required functionali
 * AWSdMainActivity - the main activity for the app - Starts the background service AWSdService if it is not running, and displays data from the service on the screen.   Provides user interface functionality to start and stop the background service, mute alarms, and manually raise an alarm.
 * AWSdPhoneApp - we need a phone app to install the watch app on the watch - details to follow once I know how to do that!
 
+## Building
+* This app is intended to be compiled using Android version 4.4W (API Level 20)
+* It uses the Gradle build system set up using Android Studio
+* To build it, clone the repository, and import it into Android Studio.  That should be enough.....
 
 ## Licence
 All code is licenced under GPL Version 3, unless stated otherwise within the code.

@@ -15,6 +15,18 @@ The App contains the following major classes to provide the required functionali
 * It uses the Gradle build system set up using Android Studio
 * To build it, clone the repository, and import it into Android Studio.  That should be enough.....
 
+## Running
+* Enable developer mode - select Settings->About and press Build Number 7 times to enable developer menu.
+* Go back to settings and select Developer Options and enable ADB debugging.
+* Connect Android wear device to computer using USB.
+* type adb devices and check it is there.
+* I had permissions issues and I had to add the following line to /etc/udev/rules.d/51-android.rules:
+  SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"
+  then re-start udev with sudo /etc/init.d/udev restart.
+  and re-connect the watch - accept the prompt on the watch to enable adb debugging.
+* Indroid studio select the "wear" module and run it - you should get a "hello world" message on the screen.
+
+
 ## Licence
 All code is licenced under GPL Version 3, unless stated otherwise within the code.
 

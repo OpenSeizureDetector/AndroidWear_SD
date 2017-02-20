@@ -10,9 +10,15 @@
     tools:context="uk.org.openseizuredetector.android_wear_sd.StartUpActivity"
     tools:deviceIds="wear">
 
-    <Button
-        android:text="Button"
+    <TextView
+        android:text="rateTv"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:id="@+id/StartServiceButton" />
+        android:id="@+id/rateTv" />
+
+    <TextView
+        android:text="xAccTv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/accTv" />
 </android.support.wearable.view.WatchViewStub>

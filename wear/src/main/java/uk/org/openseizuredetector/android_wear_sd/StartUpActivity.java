@@ -12,11 +12,9 @@ import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
 import android.widget.TextView;
 
-public class StartUpActivity extends Activity implements SensorEventListener {
+public class StartUpActivity extends Activity {
     private static final String TAG = "StartUpActivity";
     private TextView mTextView;
-    private SensorManager mSensorManager;
-    private Sensor mSensor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -30,8 +28,6 @@ public class StartUpActivity extends Activity implements SensorEventListener {
             }
         });
 
-        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
     }
 
     @Override
@@ -41,7 +37,6 @@ public class StartUpActivity extends Activity implements SensorEventListener {
         startService(new Intent(getBaseContext(), AWSdService.class));
         if (mTextView != null) mTextView.setText("Service Started");
 
-        //mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_NORMAL);
     }
 
 
@@ -50,14 +45,11 @@ public class StartUpActivity extends Activity implements SensorEventListener {
     @Override
     protected void onResume() {
         super.onResume();
-        mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME
-        );
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        mSensorManager.unregisterListener(this);
     }
 
     @Override
@@ -72,19 +64,4 @@ public class StartUpActivity extends Activity implements SensorEventListener {
         super.onDestroy();
     }
 
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            float x = event.values[0];
-            float y = event.values[1];
-            float z = event.values[2];
-            Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-        }
-
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
-    }
 }

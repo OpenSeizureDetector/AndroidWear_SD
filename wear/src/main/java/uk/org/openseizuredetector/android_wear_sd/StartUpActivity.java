@@ -56,7 +56,8 @@ public class StartUpActivity extends Activity {
     protected void onStop() {
         super.onStop();
         Log.v(TAG,"onStop()");
-        stopService(new Intent(getBaseContext(), AWSdService.class));
+        // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
+        //stopService(new Intent(getBaseContext(), AWSdService.class));
     }
 
     @Override

@@ -7,6 +7,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 import org.jtransforms.fft.DoubleFFT_1D;
@@ -29,6 +30,13 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
 
+    public class Access extends Binder {
+        public AWSdService getService() {
+            return AWSdService.this;
+        }
+    };
+    private final Access binder = new Access();
+
     public AWSdService() {
         Log.v(TAG,"AWSdService Constructor()");
     }
@@ -47,8 +55,7 @@ public class AWSdService extends Service implements SensorEventListener {
     @Override
     public IBinder onBind(Intent intent) {
         Log.v(TAG,"onBind()");
-        // TODO: Return the communication channel to the service.
-        throw new UnsupportedOperationException("Not yet implemented");
+        return binder;
     }
 
     @Override

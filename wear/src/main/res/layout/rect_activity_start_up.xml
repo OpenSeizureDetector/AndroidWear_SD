@@ -12,6 +12,13 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="OpenSeiureDetector" />
+
+    <TextView
+        android:id="@+id/startUpStatusTv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Server Status" />
+
     <TextView
         android:id="@+id/startUpMsgTv"
         android:layout_width="wrap_content"

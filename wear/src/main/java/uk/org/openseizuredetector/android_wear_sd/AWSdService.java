@@ -21,10 +21,10 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mMode = 0;   // 0=check data rate, 1=running
     private SensorEvent mStartEvent = null;
     private long mStartTs = 0;
-    private int mNSamp = 0;
-    private double mSampleFreq = 0;
-    private double[] mAccData;
-    private SdData mSdData;
+    public int mNSamp = 0;
+    public double mSampleFreq = 0;
+    public double[] mAccData;
+    public SdData mSdData;
 
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
@@ -35,7 +35,7 @@ public class AWSdService extends Service implements SensorEventListener {
             return AWSdService.this;
         }
     };
-    private final Access binder = new Access();
+    public final Access binder = new Access();
 
     public AWSdService() {
         Log.v(TAG,"AWSdService Constructor()");

@@ -1,6 +1,7 @@
 package uk.org.openseizuredetector.android_wear_sd;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -43,11 +44,13 @@ public class StartUpActivity extends Activity {
     protected void onStart() {
         super.onStart();
         if (mTextView != null) mTextView.setText("onStart");
-        startService(new Intent(getBaseContext(), AWSdService.class));
-        if (mTextView != null) mTextView.setText("Service Started");
-
-        mUiTimer = new Timer();
-
+        if (isSdServiceRunning()) {
+            Log.v(TAG,"Service already running - not starting it");
+        } else {
+            Log.v(TAG,"Service not running - starting it");
+            startService(new Intent(getBaseContext(), AWSdService.class));
+            if (mTextView != null) mTextView.setText("Service Started");
+        }
     }
 
     private class UpdateUiTask extends TimerTask {
@@ -58,9 +61,10 @@ public class StartUpActivity extends Activity {
                 public void run() {
                     if (mAWSdServce==null) {
                         Log.v(TAG, "UpdateUiTask - service is null");
+                        if (mTextView != null) mTextView.setText("NOT CONNECTED");
                     } else {
                         Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
-                        mTextView.setText("mNsamp="+mAWSdServce.mNSamp);
+                        if (mTextView != null) mTextView.setText("mNsamp="+mAWSdServce.mNSamp);
                     }
                 }
             });
@@ -75,6 +79,7 @@ public class StartUpActivity extends Activity {
                 new Intent(this, AWSdService.class),
                 mConnection = new Connection(),
                 Context.BIND_AUTO_CREATE);
+        mUiTimer = new Timer();
         mUiTimer.schedule(new UpdateUiTask(),0,1000);
     }
 
@@ -100,8 +105,17 @@ public class StartUpActivity extends Activity {
     }
 
 
-    private void updateUI() {
-        Log.v(TAG,"updateUI");
+    private boolean isSdServiceRunning() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            //Log.v(TAG,"isSdServiceRunning() - "+service.service.getClassName());
+            if ("uk.org.openseizuredetector.android_wear_sd.AWSdService".equals(service.service.getClassName())) {
+                Log.v(TAG,"isSdServiceRunning() - returning true");
+                return true;
+            }
+        }
+        Log.v(TAG,"isSdServiceRunning() - returning false");
+        return false;
     }
 
     private class Connection implements ServiceConnection {

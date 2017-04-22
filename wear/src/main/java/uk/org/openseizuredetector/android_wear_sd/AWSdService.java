@@ -108,9 +108,13 @@ public class AWSdService extends Service implements SensorEventListener {
                 mAccData[mNSamp] = (x*x + y*y + z*z);
                 mNSamp++;
                 if (mNSamp==NSAMP) {
+                    // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                    // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                    // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                    // FIXME - we should do some sort of check and disregard samples with long delays in them.
                     double dT = 1e-9*(event.timestamp - mStartTs);
-                    mSampleFreq = mNSamp/dT;
-                    Log.v(TAG,"Collected "+NSAMP+" data points in "+dT+" sec (="+mSampleFreq+" Hz) - analysing...");
+                    int sampleFreq = (int)(mNSamp/dT);
+                    Log.v(TAG,"Collected "+NSAMP+" data points in "+dT+" sec (="+sampleFreq+" Hz) - analysing...");
                     doAnalysis();
                     mNSamp = 0;
                     mStartTs = event.timestamp;

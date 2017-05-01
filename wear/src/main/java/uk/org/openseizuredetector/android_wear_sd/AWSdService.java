@@ -10,6 +10,13 @@ import android.hardware.SensorManager;
 import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
+
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.wearable.MessageApi;
+import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.NodeApi;
+import com.google.android.gms.wearable.Wearable;
+
 import org.jtransforms.fft.DoubleFFT_1D;
 
 public class AWSdService extends Service implements SensorEventListener {
@@ -30,6 +37,9 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
 
+    private GoogleApiClient mApiClient;
+
+
     public class Access extends Binder {
         public AWSdService getService() {
             return AWSdService.this;
@@ -49,6 +59,13 @@ public class AWSdService extends Service implements SensorEventListener {
         mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME);
         mAccData = new double[NSAMP];
         mSdData = new SdData();
+
+        // Initialise the Google API Client so we can use Android Wear messages.
+        mApiClient = new GoogleApiClient.Builder(this.getApplicationContext())
+                .addApi(Wearable.API)
+                .build();
+        mApiClient.connect();
+
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -69,6 +86,7 @@ public class AWSdService extends Service implements SensorEventListener {
     public void onDestroy() {
         super.onDestroy();
         Log.v(TAG,"onDestroy()");
+        mApiClient.disconnect();
         mSensorManager.unregisterListener(this);
     }
 
@@ -116,6 +134,7 @@ public class AWSdService extends Service implements SensorEventListener {
                     int sampleFreq = (int)(mNSamp/dT);
                     Log.v(TAG,"Collected "+NSAMP+" data points in "+dT+" sec (="+sampleFreq+" Hz) - analysing...");
                     doAnalysis();
+                    sendDataToPhone();
                     mNSamp = 0;
                     mStartTs = event.timestamp;
                 } else if (mNSamp>NSAMP) {
@@ -201,5 +220,32 @@ public class AWSdService extends Service implements SensorEventListener {
         }
     }
 
+    private void sendDataToPhone() {
+        Log.v(TAG,"sendDataToPhone()");
+        sendMessage("/testMsg", "Test Message");
+    }
+
+    // Send a MesageApi message text to all connected devices.
+    private void sendMessage( final String path, final String text ) {
+        new Thread( new Runnable() {
+            @Override
+            public void run() {
+                Log.v(TAG,"sendMessage("+path+","+text+")");
+                NodeApi.GetConnectedNodesResult nodes = Wearable.NodeApi.getConnectedNodes( mApiClient ).await();
+                for(Node node : nodes.getNodes()) {
+                    Log.v(TAG,"Sending to "+node.getDisplayName());
+                    MessageApi.SendMessageResult result = Wearable.MessageApi.sendMessage(
+                            mApiClient, node.getId(), path, text.getBytes() ).await();
+                    if (result.getStatus().isSuccess()) {
+                        Log.v(TAG, "Message: {" + text + "} sent to: " + node.getDisplayName());
+                    }
+                    else {
+                        // Log an error
+                        Log.e(TAG, "ERROR: failed to send Message");
+                    }
+                }
+            }
+        }).start();
+    }
 
 }

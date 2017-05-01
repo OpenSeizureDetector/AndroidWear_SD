@@ -22,7 +22,7 @@
   along with pebble_sd.  If not, see <http://www.gnu.org/licenses/>.
 
 */
-package uk.org.openseizuredetector.android_wear_sd;
+package uk.org.openseizuredetector;
 
 import android.os.Parcelable;
 import android.os.Parcel;

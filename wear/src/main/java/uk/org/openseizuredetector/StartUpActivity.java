@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector.android_wear_sd;
+package uk.org.openseizuredetector;
 
 import android.app.Activity;
 import android.app.ActivityManager;

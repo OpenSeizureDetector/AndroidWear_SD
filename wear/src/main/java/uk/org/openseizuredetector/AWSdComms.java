@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector.android_wear_sd;
+package uk.org.openseizuredetector;
 
 /**
  * Created by graham on 13/02/17.

@@ -3,21 +3,27 @@ package uk.org.openseizuredetector;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.util.Log;
 
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.stats.WakeLockEvent;
 import com.google.android.gms.wearable.MessageApi;
 import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.NodeApi;
 import com.google.android.gms.wearable.Wearable;
 
 import org.jtransforms.fft.DoubleFFT_1D;
+
+import java.io.UnsupportedEncodingException;
 
 public class AWSdService extends Service implements SensorEventListener {
     private final static String TAG="AWSdService";
@@ -36,8 +42,11 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
+    private int mAlarmThresh = 100;
+    private int mAlarmRatioThresh = 55;
 
     private GoogleApiClient mApiClient;
+    private PowerManager.WakeLock mWakeLock;
 
 
     public class Access extends Binder {
@@ -59,6 +68,11 @@ public class AWSdService extends Service implements SensorEventListener {
         mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME);
         mAccData = new double[NSAMP];
         mSdData = new SdData();
+
+        // Prevent sleeping
+        PowerManager pm = (PowerManager)(getApplicationContext().getSystemService(Context.POWER_SERVICE));
+        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "systemService");
+        mWakeLock.acquire();
 
         // Initialise the Google API Client so we can use Android Wear messages.
         mApiClient = new GoogleApiClient.Builder(this.getApplicationContext())
@@ -88,6 +102,7 @@ public class AWSdService extends Service implements SensorEventListener {
         Log.v(TAG,"onDestroy()");
         mApiClient.disconnect();
         mSensorManager.unregisterListener(this);
+        mWakeLock.release();
     }
 
     @Override
@@ -215,6 +230,14 @@ public class AWSdService extends Service implements SensorEventListener {
         mSdData.maxVal = 0;   // not used
         mSdData.maxFreq = 0;  // not used
         mSdData.haveData = true;
+        mSdData.alarmThresh = mAlarmThresh;
+        mSdData.alarmRatioThresh = mAlarmRatioThresh;
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
+        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+        float batteryPct = 100*level / (float)scale;
+        mSdData.batteryPc = (int)(batteryPct);
         for(int i=0;i<SIMPLE_SPEC_FMAX;i++) {
             mSdData.simpleSpec[i] = (int)simpleSpec[i];
         }
@@ -223,6 +246,7 @@ public class AWSdService extends Service implements SensorEventListener {
     private void sendDataToPhone() {
         Log.v(TAG,"sendDataToPhone()");
         sendMessage("/testMsg", "Test Message");
+        sendMessage("/data",mSdData.toDataString());
     }
 
     // Send a MesageApi message text to all connected devices.
@@ -234,8 +258,14 @@ public class AWSdService extends Service implements SensorEventListener {
                 NodeApi.GetConnectedNodesResult nodes = Wearable.NodeApi.getConnectedNodes( mApiClient ).await();
                 for(Node node : nodes.getNodes()) {
                     Log.v(TAG,"Sending to "+node.getDisplayName());
-                    MessageApi.SendMessageResult result = Wearable.MessageApi.sendMessage(
-                            mApiClient, node.getId(), path, text.getBytes() ).await();
+                    MessageApi.SendMessageResult result = null;
+                    try {
+                        result = Wearable.MessageApi.sendMessage(
+                                mApiClient, node.getId(), path, text.getBytes("UTF-8") ).await();
+                    } catch (UnsupportedEncodingException e) {
+                        Log.e(TAG,"Error encoding string to bytes");
+                        e.printStackTrace();
+                    }
                     if (result.getStatus().isSuccess()) {
                         Log.v(TAG, "Message: {" + text + "} sent to: " + node.getDisplayName());
                     }

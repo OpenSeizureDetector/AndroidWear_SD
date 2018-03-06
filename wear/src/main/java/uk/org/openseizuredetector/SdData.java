@@ -72,6 +72,7 @@ public class SdData implements Parcelable {
     public long maxFreq;
     public long specPower;
     public long roiPower;
+    public long roiRatio;
     public String alarmPhrase;
     public int simpleSpec[];
     public boolean pebbleConnected = false;
@@ -145,6 +146,7 @@ public class SdData implements Parcelable {
             jsonObj.put("maxFreq", maxFreq);
             jsonObj.put("specPower", specPower);
             jsonObj.put("roiPower", roiPower);
+            jsonObj.put("roiRatio", roiRatio);
             jsonObj.put("batteryPc", batteryPc);
             jsonObj.put("pebbleConnected", pebbleConnected);
             jsonObj.put("pebbleAppRunning", pebbleAppRunning);

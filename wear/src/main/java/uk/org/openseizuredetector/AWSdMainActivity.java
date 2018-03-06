@@ -3,9 +3,13 @@ package uk.org.openseizuredetector;
 import android.app.Activity;
 import android.os.Bundle;
 import android.support.wearable.view.WatchViewStub;
+import android.util.Log;
 import android.widget.TextView;
+import android.view.MotionEvent;
 
 public class AWSdMainActivity extends Activity {
+
+    private final static String TAG="AWSdMainActivity";
 
     private TextView mTextView;
 

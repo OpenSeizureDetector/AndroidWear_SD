@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.widget.TextView;
 
 import java.util.Timer;
@@ -81,6 +82,14 @@ public class StartUpActivity extends Activity {
                 Context.BIND_AUTO_CREATE);
         mUiTimer = new Timer();
         mUiTimer.schedule(new UpdateUiTask(),0,1000);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        Log.v(TAG,"dispatch touch event");
+        mAWSdServce.mSdData.alarmState = 0;
+        mAWSdServce.ClearAlarmCount();
+        return  super.dispatchTouchEvent(ev);
     }
 
     @Override

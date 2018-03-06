@@ -42,8 +42,11 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
-    private int mAlarmThresh = 100;
-    private int mAlarmRatioThresh = 55;
+    private int mAlarmThresh = 350000;
+    private int mAlarmRatioThresh = 120;
+    private int mAlarmTime = 1;
+    private int alarmCount = 0;
+
 
     private GoogleApiClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
@@ -60,8 +63,12 @@ public class AWSdService extends Service implements SensorEventListener {
         Log.v(TAG,"AWSdService Constructor()");
     }
 
+    public void ClearAlarmCount() {
+        alarmCount = 0;
+    }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+
         Log.v(TAG,"onStartCommand()");
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -111,6 +118,40 @@ public class AWSdService extends Service implements SensorEventListener {
         Log.v(TAG,"onRebind()");
     }
 
+    private void checkAlarm() {
+        boolean inAlarm = false;
+        if(  mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh ) {
+            inAlarm = true;
+        }
+        Log.v(TAG,"roiPower "+mSdData.roiPower+" roiRaTIO "+ mSdData.roiRatio);
+
+
+        if (inAlarm) {
+            alarmCount+=1;
+            if (alarmCount > mSdData.alarmTime) {
+                mSdData.alarmState = 2;
+            } else if (alarmCount>mSdData.warnTime) {
+                mSdData.alarmState = 1;
+            }
+        } else {
+            // If we are in an ALARM state, revert back to WARNING, otherwise
+            // revert back to OK.
+            if (mSdData.alarmState == 2) {
+                mSdData.alarmState = 1;
+            } else {
+                mSdData.alarmState = 0;
+                alarmCount = 0;
+            }
+        }
+        if(mSdData.alarmState == 1 || mSdData.alarmState == 2) {
+            Intent intent = new Intent(this.getApplicationContext(), StartUpActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        }
+
+
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
@@ -149,6 +190,7 @@ public class AWSdService extends Service implements SensorEventListener {
                     int sampleFreq = (int)(mNSamp/dT);
                     Log.v(TAG,"Collected "+NSAMP+" data points in "+dT+" sec (="+sampleFreq+" Hz) - analysing...");
                     doAnalysis();
+                    checkAlarm();
                     sendDataToPhone();
                     mNSamp = 0;
                     mStartTs = event.timestamp;
@@ -226,12 +268,14 @@ public class AWSdService extends Service implements SensorEventListener {
         // Populate the mSdData structure to communicate with the main SdServer service.
         mSdData.specPower = (long)specPower;
         mSdData.roiPower = (long)roiPower;
+        mSdData.roiRatio = (long)roiRatio;
         mSdData.dataTime.setToNow();
         mSdData.maxVal = 0;   // not used
         mSdData.maxFreq = 0;  // not used
         mSdData.haveData = true;
         mSdData.alarmThresh = mAlarmThresh;
         mSdData.alarmRatioThresh = mAlarmRatioThresh;
+        mSdData.alarmTime = mAlarmTime;
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
         Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
         int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);

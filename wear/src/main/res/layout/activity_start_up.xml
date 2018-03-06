@@ -1,31 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<android.support.wearable.view.WatchViewStub xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/watch_view_stub"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    app:rectLayout="@layout/rect_activity_start_up"
-    app:roundLayout="@layout/round_activity_start_up"
     tools:context="uk.org.openseizuredetector.android_wear_sd.StartUpActivity"
-    tools:deviceIds="wear">
+    tools:deviceIds="wear_round">
 
     <TextView
-        android:text="Server Status"
+        android:id="@+id/text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:id="@+id/statusTv" />
-
-    <TextView
-        android:text="rateTv"
+        android:layout_centerHorizontal="true"
+        android:layout_centerVertical="true"
+        android:text="@string/hello_round" />
+    <ToggleButton
+        android:id="@+id/toggleButton1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:id="@+id/rateTv" />
+        android:layout_below="@+id/text"
+        android:layout_centerHorizontal="true"
+        android:checked="false"
+        android:textOff="@string/toggle_turn_off"
+        android:textOn="@string/toggle_turn_on" />
+</RelativeLayout>
 
-    <TextView
-        android:text="xAccTv"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:id="@+id/accTv" />
-
-</android.support.wearable.view.WatchViewStub>

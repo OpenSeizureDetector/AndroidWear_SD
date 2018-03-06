@@ -16,6 +16,11 @@ import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.TextView;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Toast;
+import android.widget.ToggleButton;
+
 
 import java.util.Timer;
 import java.util.TimerTask;
@@ -26,31 +31,53 @@ public class StartUpActivity extends Activity {
     private static final String TAG = "StartUpActivity";
     private TextView mTextView;
     private Timer mUiTimer;
+    private ToggleButton toggleButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
-        final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
-        stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
+        //final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
+        //stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
+        //    @Override
+        //    public void onLayoutInflated(WatchViewStub stub) {
+        //        mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
+        //    }
+        //});
+        toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
+
+        // initiate toggle button's
+        toggleButton.setOnClickListener(new OnClickListener() {
+
             @Override
-            public void onLayoutInflated(WatchViewStub stub) {
-                mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
+            public void onClick(View v) {
+                if (toggleButton.isChecked()) {
+                    //checked is now true, meaning alarms should be off
+                    mAWSdServce.mSdData.alarmState = 6;
+                } else {
+                    mAWSdServce.mSdData.alarmState = 0;
+                    //checked is now false, meaning alarms should be on
+                }
             }
         });
 
     }
 
+    public void addListenerOnButton() {
+
+
+
+    }
     @Override
     protected void onStart() {
         super.onStart();
-        if (mTextView != null) mTextView.setText("onStart");
+        //if (mTextView != null) mTextView.setText("onStart");
         if (isSdServiceRunning()) {
             Log.v(TAG,"Service already running - not starting it");
         } else {
             Log.v(TAG,"Service not running - starting it");
             startService(new Intent(getBaseContext(), AWSdService.class));
-            if (mTextView != null) mTextView.setText("Service Started");
+            //if (mTextView != null) mTextView.setText("Service Started");
         }
     }
 

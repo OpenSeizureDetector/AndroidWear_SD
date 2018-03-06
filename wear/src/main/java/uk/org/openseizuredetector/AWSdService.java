@@ -119,12 +119,15 @@ public class AWSdService extends Service implements SensorEventListener {
     }
 
     private void checkAlarm() {
+        if(mSdData.alarmState == 6) {
+            //ignore alarms when muted
+            return;
+        }
         boolean inAlarm = false;
         if(  mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh ) {
             inAlarm = true;
         }
         Log.v(TAG,"roiPower "+mSdData.roiPower+" roiRaTIO "+ mSdData.roiRatio);
-
 
         if (inAlarm) {
             alarmCount+=1;

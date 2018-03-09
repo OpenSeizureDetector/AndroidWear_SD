@@ -91,16 +91,12 @@ public class StartUpActivity extends Activity {
     private class TurnOffOk extends TimerTask {
         @Override
         public void run() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mAWSdServce==null) {
+                   if (mAWSdServce==null) {
                         Log.v(TAG, "Ok Update - service is null");
                     } else {
+                        Log.v(TAG, "Ok Update - back to 0");
                         mAWSdServce.mSdData.alarmState = 0;
                     }
-                }
-            });
         }
     }
 

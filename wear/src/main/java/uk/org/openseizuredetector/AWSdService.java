@@ -12,6 +12,7 @@ import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.Vibrator;
 import android.util.Log;
 
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -42,10 +43,15 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
-    private int mAlarmThresh = 350000;
-    private int mAlarmRatioThresh = 120;
-    private int mAlarmTime = 1;
+    private int mAlarmThresh = 1000000;
+    private int mAlarmRatioThresh = 290;
+    private int mAlarmTime = 3;
     private int alarmCount = 0;
+    Vibrator mVibe;
+
+
+
+
 
 
     private GoogleApiClient mApiClient;
@@ -75,6 +81,8 @@ public class AWSdService extends Service implements SensorEventListener {
         mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME);
         mAccData = new double[NSAMP];
         mSdData = new SdData();
+        mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+
 
         // Prevent sleeping
         PowerManager pm = (PowerManager)(getApplicationContext().getSystemService(Context.POWER_SERVICE));
@@ -119,7 +127,7 @@ public class AWSdService extends Service implements SensorEventListener {
     }
 
     private void checkAlarm() {
-        if(mSdData.alarmState == 6) {
+        if(mSdData.alarmState == 6 || mSdData.alarmState == 10) {
             //ignore alarms when muted
             return;
         }
@@ -136,6 +144,9 @@ public class AWSdService extends Service implements SensorEventListener {
             } else if (alarmCount>mSdData.warnTime) {
                 mSdData.alarmState = 1;
             }
+            mVibe.vibrate(100);
+
+            //
         } else {
             // If we are in an ALARM state, revert back to WARNING, otherwise
             // revert back to OK.
@@ -289,6 +300,12 @@ public class AWSdService extends Service implements SensorEventListener {
             mSdData.simpleSpec[i] = (int)simpleSpec[i];
         }
     }
+
+    public void handleSendingIAmOK() {
+        if(mSdData != null && mSdData.alarmState == 10) {
+            sendDataToPhone();
+        }
+    };
 
     private void sendDataToPhone() {
         Log.v(TAG,"sendDataToPhone()");

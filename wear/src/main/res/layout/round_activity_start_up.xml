@@ -20,6 +20,6 @@
         android:layout_below="@+id/text"
         android:layout_centerHorizontal="true"
         android:checked="false"
-        android:textOff="@string/toggle_turn_off"
-        android:textOn="@string/toggle_turn_on" />
+        android:textOff="@string/turn_off"
+        android:textOn="@string/turn_on" />
 </RelativeLayout>

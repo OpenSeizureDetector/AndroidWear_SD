@@ -10,8 +10,10 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.widget.Button;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Vibrator;
 import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -31,7 +33,10 @@ public class StartUpActivity extends Activity {
     private static final String TAG = "StartUpActivity";
     private TextView mTextView;
     private Timer mUiTimer;
+    private Timer mOkTimer;
     private ToggleButton toggleButton;
+    private TextView mAlarmText;
+    private Button mOKButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,8 +50,11 @@ public class StartUpActivity extends Activity {
         //    }
         //});
         toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
+        mAlarmText = (TextView) findViewById(R.id.text1);
+        mOKButton = (Button) findViewById(R.id.button);
 
-        // initiate toggle button's
+
+        // initiate toggle button's on click
         toggleButton.setOnClickListener(new OnClickListener() {
 
             @Override
@@ -61,6 +69,39 @@ public class StartUpActivity extends Activity {
             }
         });
 
+
+        // initiate  OK button's on click
+        mOKButton.setOnClickListener(new OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                //send OK Message
+                mAWSdServce.mSdData.alarmState = 10;
+                mAWSdServce.ClearAlarmCount();
+                mOkTimer = new Timer();
+                mOkTimer.schedule(new TurnOffOk(), 1000);
+                mAWSdServce.handleSendingIAmOK();
+            }
+        });
+
+
+
+    }
+
+    private class TurnOffOk extends TimerTask {
+        @Override
+        public void run() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (mAWSdServce==null) {
+                        Log.v(TAG, "Ok Update - service is null");
+                    } else {
+                        mAWSdServce.mSdData.alarmState = 0;
+                    }
+                }
+            });
+        }
     }
 
     public void addListenerOnButton() {
@@ -93,6 +134,14 @@ public class StartUpActivity extends Activity {
                     } else {
                         Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
                         if (mTextView != null) mTextView.setText("mNsamp="+mAWSdServce.mNSamp);
+                        if(mAlarmText != null && mAWSdServce.mSdData != null) {
+                            if (mAWSdServce.mSdData.alarmState == 2 || mAWSdServce.mSdData.alarmState == 1) {
+                                mAlarmText.setVisibility(View.VISIBLE);
+                            } else {
+                                mAlarmText.setVisibility(View.INVISIBLE);
+                            }
+                        }
+
                     }
                 }
             });
@@ -108,15 +157,7 @@ public class StartUpActivity extends Activity {
                 mConnection = new Connection(),
                 Context.BIND_AUTO_CREATE);
         mUiTimer = new Timer();
-        mUiTimer.schedule(new UpdateUiTask(),0,1000);
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        Log.v(TAG,"dispatch touch event");
-        mAWSdServce.mSdData.alarmState = 0;
-        mAWSdServce.ClearAlarmCount();
-        return  super.dispatchTouchEvent(ev);
+        mUiTimer.schedule(new UpdateUiTask(),0,500);
     }
 
     @Override

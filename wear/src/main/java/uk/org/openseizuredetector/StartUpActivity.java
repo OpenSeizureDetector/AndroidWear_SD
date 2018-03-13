@@ -10,8 +10,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.os.PowerManager;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -39,34 +37,11 @@ public class StartUpActivity extends Activity {
     private ToggleButton toggleButton;
     private TextView mAlarmText;
     private Button mOKButton;
-    PowerManager.WakeLock wakeLock;
 
-    @Override
-    public void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        //Screen On
-        getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                        | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                        | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-    }
-
-    private void clearFlags() {
-        //Don't forget to clear the flags at some point in time.
-        getWindow().clearFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                        | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                        | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-    }
-    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
-        mUiTimer = new Timer();
-
         //final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
         //stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
         //    @Override
@@ -77,8 +52,6 @@ public class StartUpActivity extends Activity {
         toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
         mAlarmText = (TextView) findViewById(R.id.text1);
         mOKButton = (Button) findViewById(R.id.button);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD|WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-
 
 
         // initiate toggle button's on click
@@ -143,13 +116,6 @@ public class StartUpActivity extends Activity {
             startService(new Intent(getBaseContext(), AWSdService.class));
             //if (mTextView != null) mTextView.setText("Service Started");
         }
-        mUiTimer.schedule(new UpdateUiTask(),0,750);
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                "OSWakelockTag");
-        wakeLock.acquire();
-
     }
 
     private class UpdateUiTask extends TimerTask {
@@ -186,8 +152,8 @@ public class StartUpActivity extends Activity {
                 new Intent(this, AWSdService.class),
                 mConnection = new Connection(),
                 Context.BIND_AUTO_CREATE);
+        mUiTimer = new Timer();
         mUiTimer.schedule(new UpdateUiTask(),0,500);
-
     }
 
     @Override
@@ -204,7 +170,6 @@ public class StartUpActivity extends Activity {
         Log.v(TAG, "onStop()");
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
         //stopService(new Intent(getBaseContext(), AWSdService.class));
-        wakeLock.release();
     }
 
     @Override

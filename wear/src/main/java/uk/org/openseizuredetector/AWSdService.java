@@ -1,6 +1,5 @@
 package uk.org.openseizuredetector;
 
-import android.app.Activity;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -45,7 +44,7 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
     private int mAlarmThresh = 1000000;
-    private int mAlarmRatioThresh =180;
+    private int mAlarmRatioThresh = 285;
     private int mAlarmTime = 3;
     private int alarmCount = 0;
     Vibrator mVibe;
@@ -145,8 +144,7 @@ public class AWSdService extends Service implements SensorEventListener {
             } else if (alarmCount>mSdData.warnTime) {
                 mSdData.alarmState = 1;
             }
-            long[] pattern = {0, 100, 200, 300};
-            mVibe.vibrate(pattern, -1);
+            mVibe.vibrate(100);
 
             //
         } else {

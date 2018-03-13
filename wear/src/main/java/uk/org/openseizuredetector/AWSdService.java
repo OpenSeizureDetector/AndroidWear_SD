@@ -43,8 +43,8 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
-    private int mAlarmThresh = 1000000;
-    private int mAlarmRatioThresh = 285;
+    private int mAlarmThresh = 700000;
+    private int mAlarmRatioThresh = 125;
     private int mAlarmTime = 3;
     private int alarmCount = 0;
     Vibrator mVibe;
@@ -144,7 +144,8 @@ public class AWSdService extends Service implements SensorEventListener {
             } else if (alarmCount>mSdData.warnTime) {
                 mSdData.alarmState = 1;
             }
-            mVibe.vibrate(100);
+            long[] pattern = {0, 100, 200, 300};
+            mVibe.vibrate(pattern, -1);
 
             //
         } else {

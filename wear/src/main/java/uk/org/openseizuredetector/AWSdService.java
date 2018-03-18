@@ -25,6 +25,7 @@ import com.google.android.gms.wearable.Wearable;
 import org.jtransforms.fft.DoubleFFT_1D;
 
 import java.io.UnsupportedEncodingException;
+import java.util.*;
 
 public class AWSdService extends Service implements SensorEventListener {
     private final static String TAG="AWSdService";
@@ -34,6 +35,10 @@ public class AWSdService extends Service implements SensorEventListener {
     private Sensor mSensor;
     private int mMode = 0;   // 0=check data rate, 1=running
     private SensorEvent mStartEvent = null;
+    private SensorManager mHeartSensorManager;
+    private Sensor mHeartSensor;
+    private int mHeartMode = 0;   // 0=check data rate, 1=running
+    private SensorEvent mHeartStartEvent = null;
     private long mStartTs = 0;
     public int mNSamp = 0;
     public double mSampleFreq = 0;
@@ -46,7 +51,12 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmThresh = 700000;
     private int mAlarmRatioThresh = 125;
     private int mAlarmTime = 3;
+    private float mHeartPercentThresh = 1.3f;
     private int alarmCount = 0;
+    private int curHeart = 0;
+    private int avgHeart = 0;
+    private ArrayList<Integer> heartRates = new ArrayList<Integer>(10);
+
     Vibrator mVibe;
 
 
@@ -79,6 +89,9 @@ public class AWSdService extends Service implements SensorEventListener {
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME);
+        mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+        mSensorManager.registerListener(this, mHeartSensor , SensorManager.SENSOR_DELAY_UI);
+
         mAccData = new double[NSAMP];
         mSdData = new SdData();
         mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
@@ -135,6 +148,10 @@ public class AWSdService extends Service implements SensorEventListener {
         if(  mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh ) {
             inAlarm = true;
         }
+        if( mSdData.heartAvg != 0 && mSdData.heartCur > mSdData.heartAvg*mHeartPercentThresh){
+            inAlarm = true;
+            alarmCount = (int)mSdData.alarmTime;
+        }
         Log.v(TAG,"roiPower "+mSdData.roiPower+" roiRaTIO "+ mSdData.roiRatio);
 
         if (inAlarm) {
@@ -167,9 +184,38 @@ public class AWSdService extends Service implements SensorEventListener {
 
     }
 
+    private double calculateAverage(List <Integer> marks) {
+        Integer sum = 0;
+        if(!marks.isEmpty()) {
+            for (Integer mark : marks) {
+                sum += mark;
+            }
+            return sum.doubleValue() / marks.size();
+        }
+        return sum;
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        // is this a heartbeat event and does it have data?
+        if(event.sensor.getType()==Sensor.TYPE_HEART_RATE && event.values.length>0 ) {
+            int newValue = Math.round(event.values[0]);
+            //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+            // only do something if the value differs from the value before and the value is not 0.
+            if(curHeart != newValue && newValue!=0) {
+                // save the new value
+                curHeart = newValue;
+                // add it to the list and computer a new average
+                if(heartRates.size() == 10) {
+                    heartRates.remove(0);
+                }
+                heartRates.add(curHeart);
+            }
+            avgHeart = (int)calculateAverage(heartRates);
+            if(heartRates.size()<4) {
+                avgHeart = 0;
+            }
+        } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             if (mMode == 0) {
                 if (mStartEvent==null) {
                     Log.v(TAG,"mMode=0 - checking Sample Rate - mNSamp = "+mNSamp);
@@ -291,6 +337,8 @@ public class AWSdService extends Service implements SensorEventListener {
         mSdData.alarmThresh = mAlarmThresh;
         mSdData.alarmRatioThresh = mAlarmRatioThresh;
         mSdData.alarmTime = mAlarmTime;
+        mSdData.heartCur = curHeart;
+        mSdData.heartAvg = avgHeart;
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
         Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
         int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);

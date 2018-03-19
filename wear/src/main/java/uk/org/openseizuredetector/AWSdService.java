@@ -48,8 +48,8 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
-    private int mAlarmThresh = 700000;
-    private int mAlarmRatioThresh = 125;
+    private int mAlarmThresh = 900000;
+    private int mAlarmRatioThresh = 275;
     private int mAlarmTime = 3;
     private float mHeartPercentThresh = 1.3f;
     private int alarmCount = 0;

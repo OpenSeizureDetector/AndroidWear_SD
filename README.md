@@ -3,6 +3,10 @@ Seizure Detector using Android Wear watch.
 The intention is that this Android Wear App will be functionally similar to the Pebble Watch Seizure Detector (see http://github.com/OpenSeizureDetector/Pebble_SD.git).
 The App will run on an Android Wear watch, and communicate with a phone running OpenSeizureDetector (http://github.com/OpenSeizureDetector/Android_Pebble_SD), or a future Raspberry Pi based alarm system.
 
+A heart rate detection routine has been added for Android Wear watches which have heart rate sensors.  The algorithm will trigger an alarm if the heart rate of the wearer is 30% higher than average.
+
+Pressing I'm OK on the watch face will reset the alarm counter.
+
 ## Code Structure
 The App contains the following major classes to provide the required functionality:
 * AWSdService - a background service that continuously collects accelerometer data and performs seizure detection analysis periodically.   It communicates with the alarm system periodically, or when a seizure is detected.    Seizure Detection system parameters are read from persistent storage (preferences)

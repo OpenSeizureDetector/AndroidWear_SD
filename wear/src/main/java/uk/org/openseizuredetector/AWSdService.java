@@ -356,6 +356,12 @@ public class AWSdService extends Service implements SensorEventListener {
         }
     };
 
+    public void handleSendingHelp() {
+        if(mSdData != null && mSdData.alarmState == 11) {
+            sendDataToPhone();
+        }
+    };
+
     private void sendDataToPhone() {
         Log.v(TAG,"sendDataToPhone()");
         sendMessage("/testMsg", "Test Message");

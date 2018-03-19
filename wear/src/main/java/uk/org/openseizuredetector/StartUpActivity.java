@@ -37,6 +37,7 @@ public class StartUpActivity extends Activity {
     private ToggleButton toggleButton;
     private TextView mAlarmText;
     private Button mOKButton;
+    private Button mHelpButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +53,7 @@ public class StartUpActivity extends Activity {
         toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
         mAlarmText = (TextView) findViewById(R.id.text1);
         mOKButton = (Button) findViewById(R.id.button);
+        mHelpButton = (Button) findViewById(R.id.button1);
 
 
         // initiate toggle button's on click
@@ -81,8 +83,24 @@ public class StartUpActivity extends Activity {
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
                 mAWSdServce.handleSendingIAmOK();
+                moveTaskToBack(true);
             }
         });
+
+        // initiate  Help button's on click
+        mHelpButton.setOnClickListener(new OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                //send Help Message
+                mAWSdServce.mSdData.alarmState = 11;
+                mOkTimer = new Timer();
+                mOkTimer.schedule(new TurnOffOk(), 1000);
+                mAWSdServce.handleSendingHelp();
+                moveTaskToBack(true);
+            }
+        });
+
 
 
 

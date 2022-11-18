@@ -3,11 +3,17 @@ package uk.org.openseizuredetector;
 import android.app.Activity;
 import android.os.Bundle;
 import android.support.wearable.view.WatchViewStub;
+import android.util.Log;
 import android.widget.TextView;
+import android.view.MotionEvent;
+import android.widget.ToggleButton;
 
 public class AWSdMainActivity extends Activity {
 
+    private final static String TAG="AWSdMainActivity";
+
     private TextView mTextView;
+    //private ToggleButton mToggleButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -18,8 +24,10 @@ public class AWSdMainActivity extends Activity {
             @Override
             public void onLayoutInflated(WatchViewStub stub) {
                 mTextView = (TextView) stub.findViewById(R.id.text);
+                //mToggleButton = (ToggleButton) stub.findViewById(R.id.toggleButton1);
             }
         });
+
     }
 
     @Override

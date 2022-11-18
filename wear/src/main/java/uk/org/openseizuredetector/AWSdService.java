@@ -12,6 +12,7 @@ import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.Vibrator;
 import android.util.Log;
 
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -24,6 +25,7 @@ import com.google.android.gms.wearable.Wearable;
 import org.jtransforms.fft.DoubleFFT_1D;
 
 import java.io.UnsupportedEncodingException;
+import java.util.*;
 
 public class AWSdService extends Service implements SensorEventListener {
     private final static String TAG="AWSdService";
@@ -33,6 +35,10 @@ public class AWSdService extends Service implements SensorEventListener {
     private Sensor mSensor;
     private int mMode = 0;   // 0=check data rate, 1=running
     private SensorEvent mStartEvent = null;
+    private SensorManager mHeartSensorManager;
+    private Sensor mHeartSensor;
+    private int mHeartMode = 0;   // 0=check data rate, 1=running
+    private SensorEvent mHeartStartEvent = null;
     private long mStartTs = 0;
     public int mNSamp = 0;
     public double mSampleFreq = 0;
@@ -42,8 +48,21 @@ public class AWSdService extends Service implements SensorEventListener {
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
     private int mFreqCutoff = 12;   // High Frequency cutoff in Hz
-    private int mAlarmThresh = 100;
-    private int mAlarmRatioThresh = 55;
+    private int mAlarmThresh = 900000;
+    private int mAlarmRatioThresh = 275;
+    private int mAlarmTime = 3;
+    private float mHeartPercentThresh = 1.3f;
+    private int alarmCount = 0;
+    private int curHeart = 0;
+    private int avgHeart = 0;
+    private ArrayList<Integer> heartRates = new ArrayList<Integer>(10);
+
+    Vibrator mVibe;
+
+
+
+
+
 
     private GoogleApiClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
@@ -60,14 +79,23 @@ public class AWSdService extends Service implements SensorEventListener {
         Log.v(TAG,"AWSdService Constructor()");
     }
 
+    public void ClearAlarmCount() {
+        alarmCount = 0;
+    }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+
         Log.v(TAG,"onStartCommand()");
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mSensorManager.registerListener(this, mSensor , SensorManager.SENSOR_DELAY_GAME);
+        mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+        mSensorManager.registerListener(this, mHeartSensor , SensorManager.SENSOR_DELAY_UI);
+
         mAccData = new double[NSAMP];
         mSdData = new SdData();
+        mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+
 
         // Prevent sleeping
         PowerManager pm = (PowerManager)(getApplicationContext().getSystemService(Context.POWER_SERVICE));
@@ -111,9 +139,83 @@ public class AWSdService extends Service implements SensorEventListener {
         Log.v(TAG,"onRebind()");
     }
 
+    private void checkAlarm() {
+        if(mSdData.alarmState == 6 || mSdData.alarmState == 10) {
+            //ignore alarms when muted
+            return;
+        }
+        boolean inAlarm = false;
+        if(  mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh ) {
+            inAlarm = true;
+        }
+        if( mSdData.heartAvg != 0 && mSdData.heartCur > mSdData.heartAvg*mHeartPercentThresh){
+            inAlarm = true;
+            alarmCount = (int)mSdData.alarmTime;
+        }
+        Log.v(TAG,"roiPower "+mSdData.roiPower+" roiRaTIO "+ mSdData.roiRatio);
+
+        if (inAlarm) {
+            alarmCount+=1;
+            if (alarmCount > mSdData.alarmTime) {
+                mSdData.alarmState = 2;
+            } else if (alarmCount>mSdData.warnTime) {
+                mSdData.alarmState = 1;
+            }
+            long[] pattern = {0, 100, 200, 300};
+            mVibe.vibrate(pattern, -1);
+
+            //
+        } else {
+            // If we are in an ALARM state, revert back to WARNING, otherwise
+            // revert back to OK.
+            if (mSdData.alarmState == 2) {
+                mSdData.alarmState = 1;
+            } else {
+                mSdData.alarmState = 0;
+                alarmCount = 0;
+            }
+        }
+        if(mSdData.alarmState == 1 || mSdData.alarmState == 2) {
+            Intent intent = new Intent(this.getApplicationContext(), StartUpActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        }
+
+
+    }
+
+    private double calculateAverage(List <Integer> marks) {
+        Integer sum = 0;
+        if(!marks.isEmpty()) {
+            for (Integer mark : marks) {
+                sum += mark;
+            }
+            return sum.doubleValue() / marks.size();
+        }
+        return sum;
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+        // is this a heartbeat event and does it have data?
+        if(event.sensor.getType()==Sensor.TYPE_HEART_RATE && event.values.length>0 ) {
+            int newValue = Math.round(event.values[0]);
+            //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+            // only do something if the value differs from the value before and the value is not 0.
+            if(curHeart != newValue && newValue!=0) {
+                // save the new value
+                curHeart = newValue;
+                // add it to the list and computer a new average
+                if(heartRates.size() == 10) {
+                    heartRates.remove(0);
+                }
+                heartRates.add(curHeart);
+            }
+            avgHeart = (int)calculateAverage(heartRates);
+            if(heartRates.size()<4) {
+                avgHeart = 0;
+            }
+        } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             if (mMode == 0) {
                 if (mStartEvent==null) {
                     Log.v(TAG,"mMode=0 - checking Sample Rate - mNSamp = "+mNSamp);
@@ -149,6 +251,7 @@ public class AWSdService extends Service implements SensorEventListener {
                     int sampleFreq = (int)(mNSamp/dT);
                     Log.v(TAG,"Collected "+NSAMP+" data points in "+dT+" sec (="+sampleFreq+" Hz) - analysing...");
                     doAnalysis();
+                    checkAlarm();
                     sendDataToPhone();
                     mNSamp = 0;
                     mStartTs = event.timestamp;
@@ -226,12 +329,16 @@ public class AWSdService extends Service implements SensorEventListener {
         // Populate the mSdData structure to communicate with the main SdServer service.
         mSdData.specPower = (long)specPower;
         mSdData.roiPower = (long)roiPower;
+        mSdData.roiRatio = (long)roiRatio;
         mSdData.dataTime.setToNow();
         mSdData.maxVal = 0;   // not used
         mSdData.maxFreq = 0;  // not used
         mSdData.haveData = true;
         mSdData.alarmThresh = mAlarmThresh;
         mSdData.alarmRatioThresh = mAlarmRatioThresh;
+        mSdData.alarmTime = mAlarmTime;
+        mSdData.heartCur = curHeart;
+        mSdData.heartAvg = avgHeart;
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
         Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
         int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
@@ -242,6 +349,18 @@ public class AWSdService extends Service implements SensorEventListener {
             mSdData.simpleSpec[i] = (int)simpleSpec[i];
         }
     }
+
+    public void handleSendingIAmOK() {
+        if(mSdData != null && mSdData.alarmState == 10) {
+            sendDataToPhone();
+        }
+    };
+
+    public void handleSendingHelp() {
+        if(mSdData != null && mSdData.alarmState == 11) {
+            sendDataToPhone();
+        }
+    };
 
     private void sendDataToPhone() {
         Log.v(TAG,"sendDataToPhone()");

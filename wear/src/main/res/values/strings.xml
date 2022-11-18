@@ -1,6 +1,8 @@
 <resources>
     <string name="app_name">Android_Wear_SD</string>
-    <string name="hello_round">Hello Round World!</string>
+    <string name="hello_round">Open Seizure Detection Version 3.1.0</string>
     <string name="hello_square">Hello Square World!</string>
+    <string name="turn_off">Turn Off</string>
+    <string name="turn_on">Turn On</string>
     <string name="title_activity_start_up">StartUpActivity</string>
 </resources>

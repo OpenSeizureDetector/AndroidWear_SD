@@ -10,11 +10,19 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.widget.Button;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Vibrator;
 import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.widget.TextView;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Toast;
+import android.widget.ToggleButton;
+
 
 import java.util.Timer;
 import java.util.TimerTask;
@@ -25,31 +33,106 @@ public class StartUpActivity extends Activity {
     private static final String TAG = "StartUpActivity";
     private TextView mTextView;
     private Timer mUiTimer;
+    private Timer mOkTimer;
+    private ToggleButton toggleButton;
+    private TextView mAlarmText;
+    private Button mOKButton;
+    private Button mHelpButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
-        final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
-        stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
+        //final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
+        //stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
+        //    @Override
+        //    public void onLayoutInflated(WatchViewStub stub) {
+        //        mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
+        //    }
+        //});
+        toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
+        mAlarmText = (TextView) findViewById(R.id.text1);
+        mOKButton = (Button) findViewById(R.id.button);
+        mHelpButton = (Button) findViewById(R.id.button1);
+
+
+        // initiate toggle button's on click
+        toggleButton.setOnClickListener(new OnClickListener() {
+
             @Override
-            public void onLayoutInflated(WatchViewStub stub) {
-                mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
+            public void onClick(View v) {
+                if (toggleButton.isChecked()) {
+                    //checked is now true, meaning alarms should be off
+                    mAWSdServce.mSdData.alarmState = 6;
+                } else {
+                    mAWSdServce.mSdData.alarmState = 0;
+                    //checked is now false, meaning alarms should be on
+                }
             }
         });
 
+
+        // initiate  OK button's on click
+        mOKButton.setOnClickListener(new OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                //send OK Message
+                mAWSdServce.mSdData.alarmState = 10;
+                mAWSdServce.ClearAlarmCount();
+                mOkTimer = new Timer();
+                mOkTimer.schedule(new TurnOffOk(), 1000);
+                mAWSdServce.handleSendingIAmOK();
+                moveTaskToBack(true);
+            }
+        });
+
+        // initiate  Help button's on click
+        mHelpButton.setOnClickListener(new OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+                //send Help Message
+                mAWSdServce.mSdData.alarmState = 11;
+                mOkTimer = new Timer();
+                mOkTimer.schedule(new TurnOffOk(), 1000);
+                mAWSdServce.handleSendingHelp();
+                moveTaskToBack(true);
+            }
+        });
+
+
+
+
     }
 
+    private class TurnOffOk extends TimerTask {
+        @Override
+        public void run() {
+                   if (mAWSdServce==null) {
+                        Log.v(TAG, "Ok Update - service is null");
+                    } else {
+                        Log.v(TAG, "Ok Update - back to 0");
+                        mAWSdServce.mSdData.alarmState = 0;
+                    }
+        }
+    }
+
+    public void addListenerOnButton() {
+
+
+
+    }
     @Override
     protected void onStart() {
         super.onStart();
-        if (mTextView != null) mTextView.setText("onStart");
+        //if (mTextView != null) mTextView.setText("onStart");
         if (isSdServiceRunning()) {
             Log.v(TAG,"Service already running - not starting it");
         } else {
             Log.v(TAG,"Service not running - starting it");
             startService(new Intent(getBaseContext(), AWSdService.class));
-            if (mTextView != null) mTextView.setText("Service Started");
+            //if (mTextView != null) mTextView.setText("Service Started");
         }
     }
 
@@ -65,6 +148,14 @@ public class StartUpActivity extends Activity {
                     } else {
                         Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
                         if (mTextView != null) mTextView.setText("mNsamp="+mAWSdServce.mNSamp);
+                        if(mAlarmText != null && mAWSdServce.mSdData != null) {
+                            if (mAWSdServce.mSdData.alarmState == 2 || mAWSdServce.mSdData.alarmState == 1) {
+                                mAlarmText.setVisibility(View.VISIBLE);
+                            } else {
+                                mAlarmText.setVisibility(View.INVISIBLE);
+                            }
+                        }
+
                     }
                 }
             });
@@ -80,7 +171,7 @@ public class StartUpActivity extends Activity {
                 mConnection = new Connection(),
                 Context.BIND_AUTO_CREATE);
         mUiTimer = new Timer();
-        mUiTimer.schedule(new UpdateUiTask(),0,1000);
+        mUiTimer.schedule(new UpdateUiTask(),0,500);
     }
 
     @Override

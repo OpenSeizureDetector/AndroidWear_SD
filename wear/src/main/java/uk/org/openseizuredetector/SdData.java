@@ -61,6 +61,8 @@ public class SdData implements Parcelable {
     public long alarmTime;
     public long alarmThresh;
     public long alarmRatioThresh;
+    public int heartAvg;
+    public int heartCur;
     public long batteryPc;
 
     /* Analysis results */
@@ -72,6 +74,7 @@ public class SdData implements Parcelable {
     public long maxFreq;
     public long specPower;
     public long roiPower;
+    public long roiRatio;
     public String alarmPhrase;
     public int simpleSpec[];
     public boolean pebbleConnected = false;
@@ -110,6 +113,8 @@ public class SdData implements Parcelable {
             alarmPhrase = jo.optString("alarmPhrase");
             alarmThresh = jo.optInt("alarmThresh");
             alarmRatioThresh = jo.optInt("alarmRatioThresh");
+            heartAvg = jo.optInt("avgHeartRate");
+            heartCur = jo.optInt("curHeartRate");
             JSONArray specArr = jo.optJSONArray("simpleSpec");
             for (int i = 0; i < specArr.length(); i++) {
                 simpleSpec[i] = specArr.optInt(i);
@@ -145,6 +150,7 @@ public class SdData implements Parcelable {
             jsonObj.put("maxFreq", maxFreq);
             jsonObj.put("specPower", specPower);
             jsonObj.put("roiPower", roiPower);
+            jsonObj.put("roiRatio", roiRatio);
             jsonObj.put("batteryPc", batteryPc);
             jsonObj.put("pebbleConnected", pebbleConnected);
             jsonObj.put("pebbleAppRunning", pebbleAppRunning);
@@ -158,6 +164,8 @@ public class SdData implements Parcelable {
             jsonObj.put("alarmFreqMax",alarmFreqMax);
             jsonObj.put("alarmThresh", alarmThresh);
             jsonObj.put("alarmRatioThresh", alarmRatioThresh);
+            jsonObj.put("curHeartRate", heartCur);
+            jsonObj.put("avgHeartRate", heartAvg);
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);

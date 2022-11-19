@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="uk.org.openseizuredetector.android_wear_sd.StartUpActivity"
+    tools:context="uk.org.openseizuredetector.StartUpActivity"
     tools:deviceIds="wear_round">
 
     <TextView

@@ -4,5 +4,6 @@
     <style name="AppTheme" parent="android:Theme.Holo.Light.DarkActionBar">
         <!-- Customize your theme here. -->
     </style>
-
+    <string name="I_AM_OK">I Am OK</string>
+    <string name="Help">HELP</string>
 </resources>

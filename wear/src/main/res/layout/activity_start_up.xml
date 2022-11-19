@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="uk.org.openseizuredetector.android_wear_sd.StartUpActivity"
+    tools:context="uk.org.openseizuredetector.StartUpActivity"
     tools:deviceIds="wear_round">
 
     <TextView
@@ -30,7 +30,7 @@
         android:layout_above="@+id/text"
         android:layout_alignParentStart="true"
         android:layout_marginStart="20dp"
-        android:text=" I'm OK " />
+        android:text="@string/report_ok" />
 
     <Button
         android:id="@+id/button1"
@@ -39,15 +39,17 @@
         android:layout_alignBaseline="@+id/button"
         android:layout_alignBottom="@+id/button"
         android:layout_toEndOf="@+id/button"
-        android:text=" Help " />
-    <TextView android:id="@+id/text1"
+        android:text="@string/help" />
+
+    <TextView
+        android:id="@+id/text1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_below="@+id/toggleButton1"
         android:layout_centerHorizontal="true"
-        android:background="@color/dark_red"
-        android:textColor="@color/black"
-        android:text="    ALARM     "/>
+        android:background="@android:color/holo_red_dark"
+        android:text="@string/fire_alarm"
+        android:textColor="@android:color/black" />
 
     </RelativeLayout>
 

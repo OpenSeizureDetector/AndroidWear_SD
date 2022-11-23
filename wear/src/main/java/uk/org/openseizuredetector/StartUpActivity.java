@@ -1,33 +1,35 @@
 package uk.org.openseizuredetector;
 
+
+import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.Notification;
+import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
-import android.widget.Button;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.os.Vibrator;
-import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
-import android.view.MotionEvent;
-import android.widget.TextView;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.widget.Toast;
+import android.widget.Button;
+import android.widget.TextView;
 import android.widget.ToggleButton;
 
+import androidx.annotation.RequiresApi;
+import androidx.core.app.ActivityCompat;
 
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class StartUpActivity extends Activity {
+    private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
     private ServiceConnection mConnection;
     private AWSdService mAWSdServce;
     private static final String TAG = "StartUpActivity";
@@ -39,17 +41,19 @@ public class StartUpActivity extends Activity {
     private Button mOKButton;
     private Button mHelpButton;
 
+    private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
-        //final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
-        //stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
-        //    @Override
+        // final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
+        // stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
+        //     @Override
         //    public void onLayoutInflated(WatchViewStub stub) {
         //        mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
         //    }
-        //});
+        // });
         toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
         mAlarmText = (TextView) findViewById(R.id.text1);
         mOKButton = (Button) findViewById(R.id.button);
@@ -83,6 +87,7 @@ public class StartUpActivity extends Activity {
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
                 mAWSdServce.handleSendingIAmOK();
+                //After sending message, Send activity to the background
                 moveTaskToBack(true);
             }
         });
@@ -97,68 +102,83 @@ public class StartUpActivity extends Activity {
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
                 mAWSdServce.handleSendingHelp();
+                //After sending message, Send activity to the background
                 moveTaskToBack(true);
             }
         });
 
 
-
-
     }
 
-    private class TurnOffOk extends TimerTask {
-        @Override
-        public void run() {
-                   if (mAWSdServce==null) {
-                        Log.v(TAG, "Ok Update - service is null");
-                    } else {
-                        Log.v(TAG, "Ok Update - back to 0");
-                        mAWSdServce.mSdData.alarmState = 0;
-                    }
+    public Activity getActivity(Context context) {
+        if (context == null) {
+            return null;
+        } else if (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return (Activity) context;
+            } else {
+                return getActivity(((ContextWrapper) context).getBaseContext());
+            }
         }
+
+        return null;
     }
 
     public void addListenerOnButton() {
 
 
-
     }
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     protected void onStart() {
         super.onStart();
-        //if (mTextView != null) mTextView.setText("onStart");
+
+
         if (isSdServiceRunning()) {
-            Log.v(TAG,"Service already running - not starting it");
+            Log.v(TAG, "Service already running - not starting it");
         } else {
-            Log.v(TAG,"Service not running - starting it");
-            startService(new Intent(getBaseContext(), AWSdService.class));
+            Log.v(TAG, "Service not running - starting it");
+            if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
+                ActivityCompat.requestPermissions(getActivity(this),
+                        new String[]{Manifest.permission.BODY_SENSORS},
+                        PERMISSION_REQUEST_BODY_SENSORS);
+
+            } else {
+                Log.d(TAG, "ALREADY GRANTED");
+            }
+            Context context = getApplicationContext();
+            Intent intent = new Intent(context, AWSdService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
             //if (mTextView != null) mTextView.setText("Service Started");
-        }
-    }
+            //if (mTextView != null) mTextView.setText("onStart");
+            // If the notification supports a direct reply action, use
+            // PendingIntent.FLAG_MUTABLE instead.
+            Intent notificationIntent = new Intent(this, AWSdService.class);
+            PendingIntent pendingIntent =
+                    PendingIntent.getActivity(this, 0, notificationIntent,
+                            PendingIntent.FLAG_IMMUTABLE);
 
-    private class UpdateUiTask extends TimerTask {
-        @Override
-        public void run() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mAWSdServce==null) {
-                        Log.v(TAG, "UpdateUiTask - service is null");
-                        if (mTextView != null) mTextView.setText("NOT CONNECTED");
-                    } else {
-                        Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
-                        if (mTextView != null) mTextView.setText("mNsamp="+mAWSdServce.mNSamp);
-                        if(mAlarmText != null && mAWSdServce.mSdData != null) {
-                            if (mAWSdServce.mSdData.alarmState == 2 || mAWSdServce.mSdData.alarmState == 1) {
-                                mAlarmText.setVisibility(View.VISIBLE);
-                            } else {
-                                mAlarmText.setVisibility(View.INVISIBLE);
-                            }
-                        }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                Notification notification =
+                        new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
+                                .setContentTitle(getText(R.string.app_name))
+                                .setContentText(getText(R.string.hello_round))
+                                .setSmallIcon(R.drawable.icon_24x24)
+                                .setContentIntent(pendingIntent)
+                                .setTicker(getText(R.string.hello_round))
+                                .build();
 
-                    }
-                }
-            });
+
+                // Notification ID cannot be 0.
+
+                context.startForegroundService(notificationIntent);
+            }
         }
     }
 
@@ -171,7 +191,43 @@ public class StartUpActivity extends Activity {
                 mConnection = new Connection(),
                 Context.BIND_AUTO_CREATE);
         mUiTimer = new Timer();
-        mUiTimer.schedule(new UpdateUiTask(),0,500);
+        //TODO: disable update after test
+        //mUiTimer.schedule(new UpdateUiTask(),0,500);
+    }
+
+    private class TurnOffOk extends TimerTask {
+        @Override
+        public void run() {
+            if (mAWSdServce == null) {
+                Log.v(TAG, "Ok Update - service is null");
+            } else {
+                Log.v(TAG, "Ok Update - back to 0");
+                mAWSdServce.mSdData.alarmState = 0;
+            }
+        }
+    }
+
+    private class UpdateUiTask extends TimerTask {
+        @Override
+        public void run() {
+            runOnUiThread(() -> {
+                if (mAWSdServce == null) {
+                    Log.v(TAG, "UpdateUiTask - service is null");
+                    if (mTextView != null) mTextView.setText("NOT CONNECTED");
+                } else {
+                    Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
+                    if (mTextView != null) mTextView.setText("mNsamp=" + mAWSdServce.mNSamp);
+                    if (mAlarmText != null && mAWSdServce.mSdData != null) {
+                        if (mAWSdServce.mSdData.alarmState == 2 || mAWSdServce.mSdData.alarmState == 1) {
+                            mAlarmText.setVisibility(View.VISIBLE);
+                        } else {
+                            mAlarmText.setVisibility(View.INVISIBLE);
+                        }
+                    }
+
+                }
+            });
+        }
     }
 
     @Override

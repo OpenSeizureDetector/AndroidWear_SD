@@ -4,5 +4,8 @@
     <string name="hello_square">Hello Square World!</string>
     <string name="turn_off">Turn Off</string>
     <string name="turn_on">Turn On</string>
+    <string name="help">!!HELP!!</string>
+    <string name="report_ok">I am OK</string>
+    <string name="fire_alarm">    ALARM     </string>
     <string name="title_activity_start_up">StartUpActivity</string>
 </resources>

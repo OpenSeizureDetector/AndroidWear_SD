@@ -59,15 +59,15 @@ public class SdData implements Parcelable {
     public long alarmTime;
     public long alarmThresh;
     public long alarmRatioThresh;
-    public int heartAvg;
-    public int heartCur;
+    public double heartAvg;
+    public double heartCur;
     public long batteryPc;
 
     /* Heart Rate Alarm Settings */
     public boolean mHRAlarmActive = false;
     public boolean mHRNullAsAlarm = false;
-    public short mHRThreshMin = 40;
-    public short mHRThreshMax = 150;
+    public double mHRThreshMin = 40d;
+    public double mHRThreshMax = 150d;
 
     /* Oxygen Saturation Alarm Settings */
     public boolean mO2SatAlarmActive = false;

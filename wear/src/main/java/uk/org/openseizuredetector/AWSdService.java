@@ -1,5 +1,6 @@
 package uk.org.openseizuredetector;
 
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.Service;
@@ -29,6 +30,7 @@ import com.google.android.gms.wearable.CapabilityInfo;
 import com.google.android.gms.wearable.MessageClient;
 import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Node;
+import com.google.android.gms.wearable.NodeClient;
 import com.google.android.gms.wearable.Wearable;
 
 import org.jtransforms.fft.DoubleFFT_1D;
@@ -38,6 +40,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class AWSdService extends Service implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
 
@@ -93,11 +97,14 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;
     private boolean logNotConnectedMessagePf;
-
+    public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
+    private double dT;
     Vibrator mVibe;
+    private IBinder mBinder = null;
 
 
-    private Task mNodeListClient;
+    private String mNodeFullName;
+    private NodeClient mNodeListClient;
     private Node mWearNode;
 
 
@@ -106,7 +113,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
+        mContext = this;
+
     }
+
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
@@ -143,24 +153,25 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
             try {
                 mSdData.fromJSON(s1);
+                mSampleFreq = mSdData.mSampleFreq;
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_REQUESTED)) {
             try {
+                Log.v(TAG, "onMessageReived() : if receivedData ");
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
                 mMobileDeviceConnected = true;
-                logNotConnectedMessage = false;
-                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toDataString(true));
+                //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                // as broadcast to all client watches.
+
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
 
             } catch (Exception e) {
-                logNotConnectedMessage = false;
-                mSdData.watchConnected = false;
-                Log.e(TAG, "Received new settings failed to process", new Throwable());
+                Log.e(TAG, "OnMessageReceived(): catch on Received new settings failed to process", e);
             }
-            logNotConnectedMessage = false;
         } else {
             Log.v(TAG + "nn", "Not processing received message, displaying in log: " + s1);
         }
@@ -180,8 +191,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
     }
 
-    ;
-    public final Access binder = new Access();
+
 
     public Activity getActivity(Context context) {
         if (context == null) {
@@ -202,8 +212,12 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.v(TAG, "onStartCommand()");
         mContext = this;
-        mMobileDeviceConnected = false;
+        Log.v(TAG, "onStartCommand() - populating mNodeList");
+        mNodeListClient = Wearable.getNodeClient(mContext);
+
+        Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
@@ -217,7 +231,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             }
         }
 
-        Log.v(TAG, "onStartCommand()");
+
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_GAME);
@@ -255,13 +269,47 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
         // Initialise the Google API Client so we can use Android Wear messages.
         try {
-            if (mMobileDeviceConnected) {
-                sendDataToPhone();
+            if (mSdData.serverOK) {
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             }
         } catch (Exception e) {
-            Log.e(TAG, e.toString());
+            Log.e(TAG, "onStartCommand() ", e);
         }
+        Timer appStartTimer = new Timer();
+        appStartTimer.schedule(new TimerTask() {
+                                   @Override
+                                   public void run() {
+                                       try {
+                                           Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
 
+                                           if (mNodeListClient instanceof List && !mSdData.serverOK) {
+                                               Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
+                                               List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
+                                               if (connectedNodes.size() > 0) {
+                                                   for (Node node : connectedNodes) {
+                                                       Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
+                                                       mSdData.watchConnected = true;
+                                                       mSdData.watchAppRunning = true;
+                                                       sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                                                       //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                                                       // as broadcast to all client watches.
+                                                       mMobileNodeUri = node.getId();
+                                                       mNodeFullName = node.getDisplayName();
+                                                   }
+                                               } else {
+                                                   Log.e(TAG, "I should throw an exception; no nodes found");
+                                               }
+
+
+                                           }
+                                       } catch (Exception e) {
+                                           Log.e(TAG, "onStartCommand() ", e);
+                                       }
+
+                                   }
+
+                               }
+                , 5000);
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -276,7 +324,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return binder;
+        return mBinder;
     }
 
     @Override
@@ -292,6 +340,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onDestroy()");
         mSensorManager.unregisterListener(this);
         try {
+            mSdData.watchConnected = false;
+            mSdData.watchAppRunning = false;
+            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
         } catch (Exception e) {
@@ -312,7 +363,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Wearable.getMessageClient(mContext).addListener(this);
             Log.v(TAG, "onRebind()");
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+            ;
         }
         super.onRebind(intent);
     }
@@ -407,8 +459,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 }
                 if (mNSamp >= 1000) {
                     Log.v(TAG, "Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                    double dT = 1e-9 * (event.timestamp - mStartTs);
-                    mSampleFreq = mNSamp / dT;
+                    dT = 1e-9 * (event.timestamp - mStartTs);
+                    mSampleFreq = ((double) mNSamp) / dT;
                     Log.v(TAG, "Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
                     mMode = 1;
                     mNSamp = 0;
@@ -578,7 +630,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         boolean returnResult = false;
         Log.v(TAG, "sendMessage(" + path + "," + text + ")");
         final byte[] payload = (text.getBytes(StandardCharsets.UTF_8));
-
+        Task<Integer> sendMessageTask = null;
         if (mMobileNodeUri != null) {
             if (mMobileNodeUri.isEmpty()) {
                 Wearable.getCapabilityClient(mContext)
@@ -591,20 +643,23 @@ public class AWSdService extends Service implements SensorEventListener, Message
             } else {
                 Log.v(TAG,
                         "Sending message to "
-                                + mMobileNodeUri
+                                + mMobileNodeUri + " And name: " + mNodeFullName
                 );
-                final Task sendMessageTask = Wearable.getMessageClient(mContext)
-                        .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
+                if (Objects.equals(sendMessageTask, null)) {
+                    sendMessageTask = Wearable.getMessageClient(mContext)
+                            .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
+                } else
+                    Log.e(TAG, "SendMessage(): Some unusual situation: active running sendMssageTask");
 
                 try {
-                    // Block on a task and get the result synchronously (because this is on a background thread).
+                    // Asynchronous callback for result of sendMessageTask
                     sendMessageTask.addOnCompleteListener(task -> {
-                                if (task.isSuccessful()) {
-                                    Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
+                        if (task.isSuccessful()) {
+                            Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
 
-                                } else {
-                                    // Log an error
-                                    Log.e(TAG, "ERROR: failed to send Message to :" + mMobileNodeUri);
+                        } else {
+                            // Log an error
+                            Log.e(TAG, "ERROR: failed to send Message to :" + mMobileNodeUri);
                                     mMobileDeviceConnected = false;
                                     mMobileNodeUri = null;
                                 }
@@ -634,5 +689,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
             return AWSdService.this;
         }
     }
+
 
 }

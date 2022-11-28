@@ -5,6 +5,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
@@ -25,13 +27,15 @@ import android.widget.ToggleButton;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class StartUpActivity extends Activity {
-    private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
+
     private ServiceConnection mConnection;
-    private AWSdService mAWSdServce;
+    private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
     private static final String TAG = "StartUpActivity";
     private TextView mTextView;
     private Timer mUiTimer;
@@ -40,13 +44,124 @@ public class StartUpActivity extends Activity {
     private TextView mAlarmText;
     private Button mOKButton;
     private Button mHelpButton;
-
+    private static Context mContext = null;
+    private static Notification mNotificationBuilder;
     private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
+    private static List<String> channelIDs = new ArrayList<>();
+    private AWSdService mAWSdService;
+    private Intent notificationIntent = null;
+
+    private static final String returnNewCHANNEL_ID() {
+        String currentID = String.valueOf(R.string.app_name) + channelIDs.size();
+        channelIDs.add(channelIDs.size(), currentID);
+        return currentID;
+    }
+
+    private void createNotificationChannel() {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.app_name);
+            String description = getString(R.string.app_name);
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
+            channel.setDescription(description);
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    private void startForegroundServicem(Intent intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mContext.startForegroundService(intent);
+            } else { //old pre-O behaviour
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.M)
+    private void prepareAndStartForeground() {
+        try {
+            // If the notification supports a direct reply action, use
+            // PendingIntent.FLAG_MUTABLE instead.
+            mAWSdService = new AWSdService();
+            notificationIntent = new Intent(this, AWSdService.class);
+            PendingIntent pendingIntent =
+                    PendingIntent.getActivity(this, 0, notificationIntent,
+                            PendingIntent.FLAG_IMMUTABLE);
+            startForegroundServicem(notificationIntent);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mNotificationBuilder = new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
+                        .setContentTitle(getText(R.string.app_name))
+                        .setContentText(getText(R.string.hello_round))
+                        .setSmallIcon(R.drawable.icon_24x24)
+                        .setContentIntent(pendingIntent)
+                        .setTicker(getText(R.string.hello_round))
+                        .build();
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mAWSdService.startForeground(channelIDs.size(), mNotificationBuilder);
+
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
+        }
+
+
+    }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
+        try {
+            if (mContext == null) mContext = this;
+            if (mAWSdService == null) mAWSdService = new AWSdService();
+            if (mConnection == null) mConnection = new Connection();
+        } catch (Exception e) {
+            Log.v(TAG, "onCreate(): Error in binding Service variable", e);
+        }
+
+        if (isSdServiceRunning()) {
+            Log.v(TAG, "onCreate(): Service already running - not starting it");
+            bindService(notificationIntent, mConnection, Context.BIND_AUTO_CREATE);
+        } else {
+            Log.v(TAG, "Service not running - starting it");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
+                    ActivityCompat.requestPermissions(getActivity(this),
+                            new String[]{Manifest.permission.BODY_SENSORS},
+                            PERMISSION_REQUEST_BODY_SENSORS);
+
+                } else {
+                    Log.d(TAG, "ALREADY GRANTED");
+                }
+            }
+            try {
+
+
+                //if (mTextView != null) mTextView.setText("Service Started");
+                //if (mTextView != null) mTextView.setText("onStart");
+
+                createNotificationChannel();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    prepareAndStartForeground();
+                }
+                // If the notification supports a direct reply action, use
+                // PendingIntent.FLAG_MUTABLE instead.
+
+            } catch (Exception e) {
+                Log.e(TAG, " OnCreate - Starting Service failed", e);
+            }
+        }
         // final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
         // stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
         //     @Override
@@ -67,12 +182,13 @@ public class StartUpActivity extends Activity {
             public void onClick(View v) {
                 if (toggleButton.isChecked()) {
                     //checked is now true, meaning alarms should be off
-                    mAWSdServce.mSdData.alarmState = 6;
+                    mAWSdService.mSdData.alarmState = 6;
                 } else {
-                    mAWSdServce.mSdData.alarmState = 0;
+                    mAWSdService.mSdData.alarmState = 0;
                     //checked is now false, meaning alarms should be on
                 }
             }
+
         });
 
 
@@ -82,11 +198,11 @@ public class StartUpActivity extends Activity {
             @Override
             public void onClick(View v) {
                 //send OK Message
-                mAWSdServce.mSdData.alarmState = 10;
-                mAWSdServce.ClearAlarmCount();
+                mAWSdService.mSdData.alarmState = 10;
+                mAWSdService.ClearAlarmCount();
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
-                mAWSdServce.handleSendingIAmOK();
+                mAWSdService.handleSendingIAmOK();
                 //After sending message, Send activity to the background
                 moveTaskToBack(true);
             }
@@ -98,15 +214,14 @@ public class StartUpActivity extends Activity {
             @Override
             public void onClick(View v) {
                 //send Help Message
-                mAWSdServce.mSdData.alarmState = 11;
+                mAWSdService.mSdData.alarmState = 11;
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
-                mAWSdServce.handleSendingHelp();
+                mAWSdService.handleSendingHelp();
                 //After sending message, Send activity to the background
                 moveTaskToBack(true);
             }
         });
-
 
     }
 
@@ -134,9 +249,16 @@ public class StartUpActivity extends Activity {
     protected void onStart() {
         super.onStart();
 
-
+        try {
+            if (mAWSdService == null) mAWSdService = new AWSdService();
+            if (mConnection == null) mConnection = new Connection();
+            if (mContext == null) mContext = this;
+        } catch (Exception e) {
+            Log.v(TAG, "onCreate(): Error in binding Service variable", e);
+        }
         if (isSdServiceRunning()) {
-            Log.v(TAG, "Service already running - not starting it");
+            Log.v(TAG, "onCreate(): Service already running - not starting it");
+            bindService(notificationIntent, mConnection, Context.BIND_AUTO_CREATE);
         } else {
             Log.v(TAG, "Service not running - starting it");
             if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
@@ -148,36 +270,14 @@ public class StartUpActivity extends Activity {
             } else {
                 Log.d(TAG, "ALREADY GRANTED");
             }
-            Context context = getApplicationContext();
-            Intent intent = new Intent(context, AWSdService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
+
             //if (mTextView != null) mTextView.setText("Service Started");
             //if (mTextView != null) mTextView.setText("onStart");
             // If the notification supports a direct reply action, use
             // PendingIntent.FLAG_MUTABLE instead.
-            Intent notificationIntent = new Intent(this, AWSdService.class);
-            PendingIntent pendingIntent =
-                    PendingIntent.getActivity(this, 0, notificationIntent,
-                            PendingIntent.FLAG_IMMUTABLE);
-
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                Notification notification =
-                        new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
-                                .setContentTitle(getText(R.string.app_name))
-                                .setContentText(getText(R.string.hello_round))
-                                .setSmallIcon(R.drawable.icon_24x24)
-                                .setContentIntent(pendingIntent)
-                                .setTicker(getText(R.string.hello_round))
-                                .build();
-
-
-                // Notification ID cannot be 0.
-
-                context.startForegroundService(notificationIntent);
+            createNotificationChannel();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                prepareAndStartForeground();
             }
         }
     }
@@ -192,41 +292,26 @@ public class StartUpActivity extends Activity {
                 Context.BIND_AUTO_CREATE);
         mUiTimer = new Timer();
         //TODO: disable update after test
-        //mUiTimer.schedule(new UpdateUiTask(),0,500);
+        mUiTimer.schedule(new UpdateUiTask(), 0, 500);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        Log.v(TAG, "onStop()");
+        // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
+        stopService(new Intent(getBaseContext(), AWSdService.class));
     }
 
     private class TurnOffOk extends TimerTask {
         @Override
         public void run() {
-            if (mAWSdServce == null) {
+            if (mAWSdService == null) {
                 Log.v(TAG, "Ok Update - service is null");
             } else {
                 Log.v(TAG, "Ok Update - back to 0");
-                mAWSdServce.mSdData.alarmState = 0;
+                mAWSdService.mSdData.alarmState = 0;
             }
-        }
-    }
-
-    private class UpdateUiTask extends TimerTask {
-        @Override
-        public void run() {
-            runOnUiThread(() -> {
-                if (mAWSdServce == null) {
-                    Log.v(TAG, "UpdateUiTask - service is null");
-                    if (mTextView != null) mTextView.setText("NOT CONNECTED");
-                } else {
-                    Log.v(TAG, "UpdateUiTask() - " + mAWSdServce.mNSamp);
-                    if (mTextView != null) mTextView.setText("mNsamp=" + mAWSdServce.mNSamp);
-                    if (mAlarmText != null && mAWSdServce.mSdData != null) {
-                        if (mAWSdServce.mSdData.alarmState == 2 || mAWSdServce.mSdData.alarmState == 1) {
-                            mAlarmText.setVisibility(View.VISIBLE);
-                        } else {
-                            mAlarmText.setVisibility(View.INVISIBLE);
-                        }
-                    }
-
-                }
-            });
         }
     }
 
@@ -238,12 +323,27 @@ public class StartUpActivity extends Activity {
         mUiTimer.cancel();
     }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        Log.v(TAG, "onStop()");
-        // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
-        //stopService(new Intent(getBaseContext(), AWSdService.class));
+    private class UpdateUiTask extends TimerTask {
+        @Override
+        public void run() {
+            runOnUiThread(() -> {
+                if (mAWSdService == null) {
+                    Log.v(TAG, "UpdateUiTask - service is null");
+                    if (mTextView != null) mTextView.setText("NOT CONNECTED");
+                } else {
+                    Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
+                    if (mTextView != null) mTextView.setText("mNsamp=" + mAWSdService.mNSamp);
+                    if (mAlarmText != null && mAWSdService.mSdData != null) {
+                        if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
+                            mAlarmText.setVisibility(View.VISIBLE);
+                        } else {
+                            mAlarmText.setVisibility(View.INVISIBLE);
+                        }
+                    }
+
+                }
+            });
+        }
     }
 
     @Override
@@ -269,13 +369,13 @@ public class StartUpActivity extends Activity {
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             AWSdService.Access access = ((AWSdService.Access) iBinder);
-            mAWSdServce = access.getService();
+            mAWSdService = access.getService();
             Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
         }
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-            mAWSdServce = null;
+            mAWSdService = null;
             Log.i(TAG, "onServiceDisconnected()" + componentName.toShortString());
         }
     }

@@ -3,6 +3,10 @@ package uk.org.openseizuredetector;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -106,17 +110,84 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private String mNodeFullName;
     private NodeClient mNodeListClient;
     private Node mWearNode;
-
+    private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
+    private static List<String> channelIDs = new ArrayList<>();
 
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
+    private Intent notificationIntent = null;
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
         mContext = this;
 
+
     }
 
+    private static final String returnNewCHANNEL_ID() {
+        String currentID = String.valueOf(R.string.app_name) + channelIDs.size();
+        channelIDs.add(channelIDs.size(), currentID);
+        return currentID;
+    }
+
+    private void createNotificationChannel() {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.app_name);
+            String description = getString(R.string.app_name);
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
+            channel.setDescription(description);
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    private void mStartForegroundService(Intent intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mContext.startForegroundService(intent);
+            } else { //old pre-O behaviour
+                mContext.startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
+        }
+    }
+
+
+    public void prepareAndStartForeground() {
+        try {
+            Notification mNotificationBuilder = null;
+            // If the notification supports a direct reply action, use
+            // PendingIntent.FLAG_MUTABLE instead.
+            PendingIntent pendingIntent =
+                    PendingIntent.getActivity(this, 0, notificationIntent,
+                            PendingIntent.FLAG_IMMUTABLE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mNotificationBuilder = new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
+                        .setContentTitle(getText(R.string.app_name))
+                        .setContentText(getText(R.string.hello_round))
+                        .setSmallIcon(R.drawable.icon_24x24)
+                        .setContentIntent(pendingIntent)
+                        .setTicker(getText(R.string.hello_round))
+                        .build();
+            }
+
+            Log.d(TAG, "prepareAndStartForeground(): state of channelIDs.size(): " + channelIDs.size());
+            Log.d(TAG, "prepareAndStartForeground(): state of mNotificationBuilder: " + mNotificationBuilder);
+
+            startForeground(channelIDs.size(), mNotificationBuilder);
+
+        } catch (Exception e) {
+            Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
+        }
+
+
+    }
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
@@ -214,6 +285,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.v(TAG, "onStartCommand()");
         mContext = this;
+        try {
+
+
+            //if (mTextView != null) mTextView.setText("Service Started");
+            //if (mTextView != null) mTextView.setText("onStart");
+
+            createNotificationChannel();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                prepareAndStartForeground();
+            }
+            // If the notification supports a direct reply action, use
+            // PendingIntent.FLAG_MUTABLE instead.
+
+        } catch (Exception e) {
+            Log.e(TAG, " OnCreate - Starting Service failed", e);
+        }
         Log.v(TAG, "onStartCommand() - populating mNodeList");
         mNodeListClient = Wearable.getNodeClient(mContext);
 
@@ -256,6 +343,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
         mAccData = new double[NSAMP];
         mSdData = new SdData();
+
         mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
 
@@ -310,6 +398,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                                }
                 , 5000);
+
+        if (intent == null) return START_NOT_STICKY;
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -349,6 +439,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
         }
         mWakeLock.release();
+
     }
 
     @Override

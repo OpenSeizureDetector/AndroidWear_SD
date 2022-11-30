@@ -274,8 +274,8 @@ public class StartUpActivity extends Activity {
         ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
             //Log.v(TAG,"isSdServiceRunning() - "+service.service.getClassName());
-            if ("uk.org.openseizuredetector.android_wear_sd.AWSdService".equals(service.service.getClassName())) {
-                Log.v(TAG,"isSdServiceRunning() - returning true");
+            if ("uk.org.openseizuredetector.AWSdService".equals(service.service.getClassName())) {
+                Log.v(TAG, "isSdServiceRunning() - returning true");
                 return true;
             }
         }

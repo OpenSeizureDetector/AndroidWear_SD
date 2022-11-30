@@ -441,7 +441,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
-            bindSensorListeners();
+            if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -485,7 +485,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
-            bindSensorListeners();
+            if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
             Log.v(TAG, "onRebind()");
         } catch (Exception e) {
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);

@@ -640,6 +640,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             //mSdData.maxVal =    // not used
             //mSdData.maxFreq = 0;  // not used
             mSdData.haveData = true;
+            mSdData.haveSettings = true;
             mSdData.alarmThresh = mAlarmThresh;
             mSdData.alarmRatioThresh = mAlarmRatioThresh;
             mSdData.alarmTime = mAlarmTime;

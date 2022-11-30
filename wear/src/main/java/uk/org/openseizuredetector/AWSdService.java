@@ -192,6 +192,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
+        if (mSdData == null) mSdData = new SdData();
         Log.v(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
@@ -233,6 +234,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_REQUESTED)) {
             try {
                 Log.v(TAG, "onMessageReived() : if receivedData ");
+                mSdData.fromJSON(s1);
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;

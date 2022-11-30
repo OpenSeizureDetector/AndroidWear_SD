@@ -24,6 +24,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Vibrator;
+import android.text.format.Time;
 import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
@@ -179,7 +180,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
             Log.d(TAG, "prepareAndStartForeground(): state of channelIDs.size(): " + channelIDs.size());
             Log.d(TAG, "prepareAndStartForeground(): state of mNotificationBuilder: " + mNotificationBuilder);
-
+            mStartForegroundService(notificationIntent);
             startForeground(channelIDs.size(), mNotificationBuilder);
 
         } catch (Exception e) {
@@ -191,13 +192,13 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
-        Log.d(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
+        Log.v(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
         mMobileNodeUri = messageEvent.getSourceNodeId();
         final String s1 = Arrays.toString(messageEvent.getData());
         final String messageEventPath = messageEvent.getPath();
-        Log.d(
+        Log.v(
                 TAG_MESSAGE_RECEIVED,
                 "onMessageReceived() A message from watch was received:"
                         + messageEvent.getRequestId()
@@ -213,6 +214,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 // Set the data of the message to be the bytes of the Uri.
                 Log.v(TAG, "Sending return message: " + wearableAppCheckPayloadReturnACK);
                 sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
+                bindSensorListeners();
                 Log.d(TAG, "We returned from sending message.");
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
@@ -281,6 +283,37 @@ public class AWSdService extends Service implements SensorEventListener, Message
         alarmCount = 0;
     }
 
+
+    public void bindSensorListeners() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
+                    ActivityCompat.requestPermissions(getActivity(this),
+                            new String[]{Manifest.permission.BODY_SENSORS},
+                            PERMISSION_REQUEST_BODY_SENSORS);
+
+
+                } else {
+                    Log.d(TAG, "ALREADY GRANTED");
+                }
+            }
+            mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_GAME);
+            mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
+            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
+            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
+            mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
+        } catch (Exception e) {
+            Log.e(TAG, "onStartCommand(): Sensor declaration excepmted: ", e);
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.v(TAG, "onStartCommand()");
@@ -305,31 +338,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
         mNodeListClient = Wearable.getNodeClient(mContext);
 
         Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                ActivityCompat.requestPermissions(getActivity(this),
-                        new String[]{Manifest.permission.BODY_SENSORS},
-                        PERMISSION_REQUEST_BODY_SENSORS);
 
+        bindSensorListeners();
 
-            } else {
-                Log.d(TAG, "ALREADY GRANTED");
-            }
-        }
-
-
-        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_GAME);
-        mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
-        mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
-        mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
-        mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
-        mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
-        mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
-        mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
-        mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
             ArrayList<String> arrayList = new ArrayList<String>();
@@ -354,10 +365,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
         if (!mWakeLock.isHeld()) {
             mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
         }
-
+        try {
+            Wearable.getCapabilityClient(mContext)
+                    .addListener(
+                            this,
+                            Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                    );
+            Wearable.getMessageClient(mContext).addListener(this);
+            Log.v(TAG, "onRebind()");
+        } catch (Exception e) {
+            Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+            ;
+        }
         // Initialise the Google API Client so we can use Android Wear messages.
         try {
             if (mSdData.serverOK) {
+
                 sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             }
         } catch (Exception e) {
@@ -369,7 +392,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                                    public void run() {
                                        try {
                                            Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
-
+                                           if (mAccData == null) mAccData = new double[NSAMP];
                                            if (mNodeListClient instanceof List && !mSdData.serverOK) {
                                                Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
                                                List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
@@ -410,7 +433,15 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public IBinder onBind(Intent intent) {
         Log.v(TAG, "onBind()");
         try {
-            Log.v(TAG, "onRebind()");
+            createNotificationChannel();
+            prepareAndStartForeground();
+            Wearable.getCapabilityClient(mContext)
+                    .addListener(
+                            this,
+                            Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                    );
+            Wearable.getMessageClient(mContext).addListener(this);
+            bindSensorListeners();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -446,12 +477,15 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public void onRebind(Intent intent) {
 
         try {
+            createNotificationChannel();
+            prepareAndStartForeground();
             Wearable.getCapabilityClient(mContext)
                     .addListener(
                             this,
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
+            bindSensorListeners();
             Log.v(TAG, "onRebind()");
         } catch (Exception e) {
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
@@ -558,29 +592,39 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     mStartTs = event.timestamp;
                 }
             } else if (mMode == 1) {
-                float x = event.values[0];
-                float y = event.values[1];
-                float z = event.values[2];
-                //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                mAccData[mNSamp] = (x * x + y * y + z * z);
-                mNSamp++;
-                if (mNSamp == NSAMP) {
-                    // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                    // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                    // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                    // FIXME - we should do some sort of check and disregard samples with long delays in them.
-                    double dT = 1e-9 * (event.timestamp - mStartTs);
-                    int sampleFreq = (int) (mNSamp / dT);
-                    Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+                try {
+                    float x = event.values[0];
+                    float y = event.values[1];
+                    float z = event.values[2];
+                    //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
+                    if (mAccData != null) {
+                        mAccData = new double[NSAMP];
+                        if (mAccData.length < mNSamp)
+                            Log.v(TAG, "OnSensorChanged(): error in arraybuilder");
+                    }
 
-                    doAnalysis();
-                    checkAlarm();
-                    mNSamp = 0;
-                    mStartTs = event.timestamp;
-                } else if (mNSamp > NSAMP) {
-                    Log.v(TAG, "Received data during analysis - ignoring sample");
+                    mAccData[mNSamp] = (x * x + y * y + z * z);
+                    mNSamp++;
+                    if (mNSamp == NSAMP) {
+                        // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                        // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                        // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                        // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                        double dT = 1e-9 * (event.timestamp - mStartTs);
+                        int sampleFreq = (int) (mNSamp / dT);
+                        Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+
+                        doAnalysis();
+                        checkAlarm();
+
+                        mNSamp = 0;
+                        mStartTs = event.timestamp;
+                    } else if (mNSamp > NSAMP) {
+                        Log.v(TAG, "Received data during analysis - ignoring sample");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "OnSensorChanged(): trying to process accellerationData failed", e);
                 }
-
             } else {
                 Log.v(TAG, "ERROR - Mode " + mMode + " unrecognised");
             }
@@ -588,6 +632,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
         }
         try {
+            if (mSdData == null) mSdData = new SdData();
+            if (mSdData.dataTime == null) mSdData.dataTime = new Time();
             mSdData.dataTime.setToNow();
             //mSdData.maxVal =    // not used
             //mSdData.maxFreq = 0;  // not used
@@ -603,22 +649,17 @@ public class AWSdService extends Service implements SensorEventListener, Message
             int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             float batteryPct = 100 * level / (float) scale;
             mSdData.batteryPc = (int) (batteryPct);
+
         } catch (Exception e) {
             Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
         }
-        //Only send to phone when connected.
-        if (mMobileDeviceConnected) {
-            logNotConnectedMessage = true;
 
-            try {
-                sendDataToPhone();
-            } catch (Exception e) {
-                Log.e(TAG, "sendDataToPhone(): Failed to run analysis", new Throwable());
-            }
-        } else if (logNotConnectedMessage && !logNotConnectedMessagePf)
-            Log.d(TAG, "Not sending data. Reason: Not connected");
-        else if (logNotConnectedMessage) logNotConnectedMessagePf = true;
-        else logNotConnectedMessagePf = false;
+        try {
+            sendDataToPhone();
+        } catch (Exception e) {
+            Log.e(TAG, "sendDataToPhone(): Failed to run analysis", new Throwable());
+        }
+
     }
 
     /**

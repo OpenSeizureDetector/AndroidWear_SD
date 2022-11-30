@@ -217,7 +217,7 @@ public class StartUpActivity extends Activity {
         super.onStop();
         Log.v(TAG, "onStop()");
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
-        stopService(new Intent(getBaseContext(), AWSdService.class));
+
     }
 
     private class TurnOffOk extends TimerTask {
@@ -240,6 +240,12 @@ public class StartUpActivity extends Activity {
         mUiTimer.cancel();
     }
 
+    @Override
+    protected void onDestroy() {
+        stopService(new Intent(getBaseContext(), AWSdService.class));
+        super.onDestroy();
+    }
+
     private class UpdateUiTask extends TimerTask {
         @Override
         public void run() {
@@ -248,7 +254,7 @@ public class StartUpActivity extends Activity {
                     Log.v(TAG, "UpdateUiTask - service is null");
                     if (mTextView != null) mTextView.setText("NOT CONNECTED");
                 } else {
-                    Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
+                    //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                     if (mTextView != null) mTextView.setText("mNsamp=" + mAWSdService.mNSamp);
                     if (mAlarmText != null && mAWSdService.mSdData != null) {
                         if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
@@ -261,11 +267,6 @@ public class StartUpActivity extends Activity {
                 }
             });
         }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
     }
 
 

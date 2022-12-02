@@ -165,6 +165,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Notification mNotificationBuilder = null;
             // If the notification supports a direct reply action, use
             // PendingIntent.FLAG_MUTABLE instead.
+            if (notificationIntent == null)
+                notificationIntent = new Intent(mContext, AWSdService.class);
             PendingIntent pendingIntent =
                     PendingIntent.getActivity(this, 0, notificationIntent,
                             PendingIntent.FLAG_IMMUTABLE);
@@ -238,7 +240,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
-                mMobileDeviceConnected = true;
+                mSdData.haveData = true;
+
                 //TODO: Deside what to do with the population of id and name. Nou this is being treated
                 // as broadcast to all client watches.
 
@@ -288,6 +291,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public void bindSensorListeners() {
         try {
+            mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
+            mSdData.watchFwVersion = Build.DISPLAY;
+            mSdData.watchPartNo = Build.BOARD;
+            mSdData.watchSdName = Build.MODEL;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
@@ -322,7 +329,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         mContext = this;
         try {
 
-
+            if (mSdData == null) mSdData = new SdData();
             //if (mTextView != null) mTextView.setText("Service Started");
             //if (mTextView != null) mTextView.setText("onStart");
 
@@ -341,7 +348,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
         Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
 
-        bindSensorListeners();
+        if (mSdData.serverOK) bindSensorListeners();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
@@ -617,7 +624,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
                         Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
 
                         doAnalysis();
-                        checkAlarm();
 
                         mNSamp = 0;
                         mStartTs = event.timestamp;
@@ -639,6 +645,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSdData.dataTime.setToNow();
             //mSdData.maxVal =    // not used
             //mSdData.maxFreq = 0;  // not used
+            checkAlarm();
             mSdData.haveData = true;
             mSdData.haveSettings = true;
             mSdData.alarmThresh = mAlarmThresh;
@@ -780,11 +787,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
                         "Sending message to "
                                 + mMobileNodeUri + " And name: " + mNodeFullName
                 );
-                if (Objects.equals(sendMessageTask, null)) {
-                    sendMessageTask = Wearable.getMessageClient(mContext)
-                            .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
-                } else
-                    Log.e(TAG, "SendMessage(): Some unusual situation: active running sendMssageTask");
+                sendMessageTask = Wearable.getMessageClient(mContext)
+                        .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
 
                 try {
                     // Asynchronous callback for result of sendMessageTask

@@ -195,6 +195,17 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
         if (mSdData == null) mSdData = new SdData();
+        if (mSensorManager != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+                ArrayList<String> arrayList = new ArrayList<String>();
+                for (Sensor sensor : sensors) {
+                    arrayList.add(sensor.getName());
+                }
+
+                arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
+            }
+        }
         Log.v(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
@@ -349,16 +360,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
 
         if (mSdData.serverOK) bindSensorListeners();
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
-            ArrayList<String> arrayList = new ArrayList<String>();
-            for (Sensor sensor : sensors) {
-                arrayList.add(sensor.getName());
-            }
-
-            arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
-        }
 
 
         mAccData = new double[NSAMP];

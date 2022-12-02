@@ -3,7 +3,6 @@ package uk.org.openseizuredetector;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -13,6 +12,7 @@ import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.BitmapFactory;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -28,6 +28,7 @@ import android.text.format.Time;
 import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wearable.CapabilityClient;
@@ -117,6 +118,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
     private Intent notificationIntent = null;
+    NotificationChannel channel;
+    NotificationManager notificationManager;
+    NotificationCompat.Builder notificationCompatBuilder;
+
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
@@ -138,12 +143,15 @@ public class AWSdService extends Service implements SensorEventListener, Message
             CharSequence name = getString(R.string.app_name);
             String description = getString(R.string.app_name);
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
+            channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
             channel.setDescription(description);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
+            if (!notificationManager.areNotificationsEnabled()) {
+                Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
+            }
         }
     }
 
@@ -162,29 +170,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public void prepareAndStartForeground() {
         try {
-            Notification mNotificationBuilder = null;
-            // If the notification supports a direct reply action, use
-            // PendingIntent.FLAG_MUTABLE instead.
-            if (notificationIntent == null)
-                notificationIntent = new Intent(mContext, AWSdService.class);
-            PendingIntent pendingIntent =
-                    PendingIntent.getActivity(this, 0, notificationIntent,
-                            PendingIntent.FLAG_IMMUTABLE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                mNotificationBuilder = new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
-                        .setContentTitle(getText(R.string.app_name))
-                        .setContentText(getText(R.string.hello_round))
-                        .setSmallIcon(R.drawable.icon_24x24)
-                        .setContentIntent(pendingIntent)
-                        .setTicker(getText(R.string.hello_round))
-                        .build();
-            }
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
+            builder.setContentTitle(String.valueOf(R.string.app_name));
+            builder.setSmallIcon(R.drawable.icon_24x24);
+            builder.setContentIntent(PendingIntent.getActivity(this, 0, new Intent(this, AWSdService.class), PendingIntent.FLAG_UPDATE_CURRENT));
 
-            Log.d(TAG, "prepareAndStartForeground(): state of channelIDs.size(): " + channelIDs.size());
-            Log.d(TAG, "prepareAndStartForeground(): state of mNotificationBuilder: " + mNotificationBuilder);
-            mStartForegroundService(notificationIntent);
-            startForeground(channelIDs.size(), mNotificationBuilder);
+            NotificationCompat.WearableExtender extender = new NotificationCompat.WearableExtender();
+            extender.setBackground(BitmapFactory.decodeResource(getResources(), R.drawable.card_background));
+            extender.setContentIcon(R.drawable.icon_24x24);
+            extender.setHintHideIcon(true);
+            extender.extend(builder);
 
+            builder.setPriority(NotificationCompat.PRIORITY_LOW);
+            builder.setContentText(String.valueOf(R.string.app_name));
+            builder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.drawable.icon_24x24));
+            returnNewCHANNEL_ID();
+            notificationManager.notify(channelIDs.size(), builder.build());
         } catch (Exception e) {
             Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
         }

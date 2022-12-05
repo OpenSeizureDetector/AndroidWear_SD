@@ -106,6 +106,7 @@ public class SdData implements Parcelable {
     public boolean mO2SatAlarmStanding = false;
     public boolean mO2SatFaultStanding = false;
     public double mO2Sat = 0;
+    public String mDataType;
     int mNsamp = 0;
 
 
@@ -148,6 +149,7 @@ public class SdData implements Parcelable {
             mHRAlarmStanding = jo.optBoolean("hrAlarmStanding");
             mHRThreshMax = (short) jo.optInt("hrThreshMin");
             mHRThreshMin = (short) jo.optInt("hrThreshMax");
+            mDataType = jo.optString("dataType", "raw");
             mHR = (short) jo.optInt("hr");
             if (mHR >= 0.0) {
                 mHRAlarmActive = true;
@@ -197,6 +199,7 @@ public class SdData implements Parcelable {
             jsonObj.put("alarmPhrase", alarmPhrase);
             jsonObj.put("hr", mHR);
             jsonObj.put("o2Sat", mO2Sat);
+            jsonObj.put("dataType", mDataType);
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
@@ -261,6 +264,7 @@ public class SdData implements Parcelable {
             jsonObj.put("watchSdName", watchSdName);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchSdVersion", watchSdVersion);
+            jsonObj.put("dataType", "settings");
             Log.v(TAG, "phoneAppVersion=" + phoneAppVersion);
 
             retval = jsonObj.toString();
@@ -311,6 +315,8 @@ public class SdData implements Parcelable {
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
             jsonObj.put("o2Sat", mO2Sat);
+
+            mDataType = "data";
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
@@ -318,6 +324,7 @@ public class SdData implements Parcelable {
 
             jsonObj.put("simpleSpec", arr);
             if (includeRawData) {
+                mDataType = "raw";
                 JSONArray rawArr = new JSONArray();
                 for (int i = 0; i < rawData.length; i++) {
                     rawArr.put(rawData[i]);
@@ -331,6 +338,7 @@ public class SdData implements Parcelable {
                 jsonObj.put("rawData3D", raw3DArr);
 
             }
+            jsonObj.put("dataType", mDataType);
 
             retval = jsonObj.toString();
         } catch (Exception ex) {

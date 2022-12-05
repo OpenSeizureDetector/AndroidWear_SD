@@ -240,7 +240,12 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.v(TAG, "Received new settings");
 
             try {
+
                 mSdData.fromJSON(s1);
+                mSdData.haveSettings = true;
+                mSdData.watchAppRunning = true;
+                mSdData.watchConnected = true;
+                mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
@@ -608,12 +613,14 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     float y = event.values[1];
                     float z = event.values[2];
                     //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                    if (mAccData != null) {
+                    if (mAccData == null) {
                         mAccData = new double[NSAMP];
+                    } else {
                         if (mAccData.length < mNSamp)
                             Log.v(TAG, "OnSensorChanged(): error in arraybuilder");
                     }
 
+                    assert mAccData != null;
                     mAccData[mNSamp] = (x * x + y * y + z * z);
                     mNSamp++;
                     if (mNSamp == NSAMP) {
@@ -646,10 +653,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
             if (mSdData.dataTime == null) mSdData.dataTime = new Time();
             mSdData.dataTime.setToNow();
             //mSdData.maxVal =    // not used
-            //mSdData.maxFreq = 0;  // not used
-            checkAlarm();
+            //mSdData.maxFreq = 0;  // not usedx
             mSdData.haveData = true;
             mSdData.haveSettings = true;
+            mSdData.watchConnected = true;
             mSdData.alarmThresh = mAlarmThresh;
             mSdData.alarmRatioThresh = mAlarmRatioThresh;
             mSdData.alarmTime = mAlarmTime;
@@ -661,6 +668,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             float batteryPct = 100 * level / (float) scale;
             mSdData.batteryPc = (int) (batteryPct);
+            checkAlarm();
 
         } catch (Exception e) {
             Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
@@ -669,7 +677,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         try {
             sendDataToPhone();
         } catch (Exception e) {
-            Log.e(TAG, "sendDataToPhone(): Failed to run analysis", new Throwable());
+            Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
         }
 
     }
@@ -765,8 +773,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     private void sendDataToPhone() {
         Log.v(TAG, "sendDataToPhone()");
+        if (mSdData.batteryPc > 0) {
+            mSdData.haveSettings = true;
+        }
         sendMessage(MESSAGE_ITEM_OSD_TEST, "Test Message");
-        sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+        sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toJSON(false));
     }
 
     // Send a MesageApi message text to all connected devices.

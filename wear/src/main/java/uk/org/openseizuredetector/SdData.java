@@ -241,6 +241,7 @@ public class SdData implements Parcelable {
                 jsonObj.put("dataTimeStr", "00000000T000000");
                 jsonObj.put("dataTime", "00-00-00 00:00:00");
             }
+            jsonObj.put("dataType", "settings");
             jsonObj.put("batteryPc", batteryPc);
             jsonObj.put("alarmState", alarmState);
             jsonObj.put("alarmPhrase", alarmPhrase);
@@ -264,7 +265,6 @@ public class SdData implements Parcelable {
             jsonObj.put("watchSdName", watchSdName);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchSdVersion", watchSdVersion);
-            jsonObj.put("dataType", "settings");
             Log.v(TAG, "phoneAppVersion=" + phoneAppVersion);
 
             retval = jsonObj.toString();
@@ -279,6 +279,8 @@ public class SdData implements Parcelable {
         String retval;
         retval = "SdData.toDataString() Output";
         try {
+
+            mDataType = "data";
             JSONObject jsonObj = new JSONObject();
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));
@@ -316,7 +318,6 @@ public class SdData implements Parcelable {
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
             jsonObj.put("o2Sat", mO2Sat);
 
-            mDataType = "data";
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);

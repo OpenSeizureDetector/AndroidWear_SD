@@ -777,7 +777,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSdData.haveSettings = true;
         }
         sendMessage(MESSAGE_ITEM_OSD_TEST, "Test Message");
-        sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toJSON(false));
+        sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toJSON(true));
     }
 
     // Send a MesageApi message text to all connected devices.

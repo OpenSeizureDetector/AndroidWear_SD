@@ -84,6 +84,7 @@ public class SdData implements Parcelable {
 
     public double rawData[];
     public double rawData3D[];
+    public double dT;
     public boolean watchConnected = false;
 
     /* Analysis results */
@@ -107,6 +108,7 @@ public class SdData implements Parcelable {
     public boolean mO2SatFaultStanding = false;
     public double mO2Sat = 0;
     public String mDataType;
+    public String phoneName = "";
     int mNsamp = 0;
 
 
@@ -114,6 +116,7 @@ public class SdData implements Parcelable {
         simpleSpec = new int[10];
         rawData = new double[N_RAW_DATA];
         rawData3D = new double[N_RAW_DATA * 3];
+        dT = 0d;
         dataTime = new Time(Time.getCurrentTimezone());
     }
 
@@ -136,6 +139,7 @@ public class SdData implements Parcelable {
             Log.v(TAG, "fromJSON(): dataTime = " + dataTime.toString());
             maxVal = jo.optInt("maxVal");
             maxFreq = jo.optInt("maxFreq");
+            mSampleFreq = jo.optLong("sampleFreq");
             specPower = jo.optInt("specPower");
             roiPower = jo.optInt("roiPower");
             batteryPc = jo.optInt("batteryPc");
@@ -150,6 +154,7 @@ public class SdData implements Parcelable {
             mHRThreshMax = (short) jo.optInt("hrThreshMin");
             mHRThreshMin = (short) jo.optInt("hrThreshMax");
             mDataType = jo.optString("dataType", "raw");
+            phoneName = jo.optString("phoneName");
             mHR = (short) jo.optInt("hr");
             if (mHR >= 0.0) {
                 mHRAlarmActive = true;

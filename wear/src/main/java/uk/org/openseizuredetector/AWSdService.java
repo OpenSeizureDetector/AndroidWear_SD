@@ -239,6 +239,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             }
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_TEST_RECEIVED)) {
             //TODO
+            sendMessage(MESSAGE_ITEM_OSD_TEST, wearableAppCheckPayloadReturnACK);
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_RECEIVED)) {
             Log.v(TAG, "Received new settings");
 
@@ -250,6 +251,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
+                if ((mNodeFullName == null || mNodeFullName.isEmpty())
+                        && mSdData.phoneName.isEmpty())
+                    mNodeFullName = mSdData.phoneName;
+
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
@@ -263,7 +268,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
 
-                //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                //TODO: Decide what to do with the population of id and name. Nou this is being treated
                 // as broadcast to all client watches.
 
                 sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
@@ -605,7 +610,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 if (mNSamp >= 1000) {
                     Log.v(TAG, "Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
                     dT = 1e-9 * (event.timestamp - mStartTs);
+                    mSdData.dT = dT;
                     mSampleFreq = ((double) mNSamp) / dT;
+                    mSdData.mSampleFreq = (long) mSampleFreq;
                     Log.v(TAG, "Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
                     mMode = 1;
                     mNSamp = 0;
@@ -815,9 +822,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                         } else {
                             // Log an error
-                            Log.e(TAG, "ERROR: failed to send Message to :" + mMobileNodeUri);
-                                    mMobileDeviceConnected = false;
-                                    mMobileNodeUri = null;
+                            Log.e(TAG, "ERROR: failed to send Message to: " + mMobileNodeUri);
+                            mMobileDeviceConnected = false;
+                            mMobileNodeUri = null;
+                            mNodeFullName = null;
                                 }
                             }
                     );

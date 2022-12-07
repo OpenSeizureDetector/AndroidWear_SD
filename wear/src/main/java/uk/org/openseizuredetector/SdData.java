@@ -197,7 +197,7 @@ public class SdData implements Parcelable {
             jsonObj.put("roiRatio", 10 * roiPower / specPower);
             jsonObj.put("alarmState", alarmState);
             jsonObj.put("alarmPhrase", alarmPhrase);
-            jsonObj.put("hr", mHR);
+            jsonObj.put("hr", heartCur);
             jsonObj.put("o2Sat", mO2Sat);
             jsonObj.put("dataType", mDataType);
             JSONArray arr = new JSONArray();
@@ -243,6 +243,9 @@ public class SdData implements Parcelable {
             }
             jsonObj.put("dataType", "settings");
             jsonObj.put("batteryPc", batteryPc);
+            jsonObj.put("watchConnected", watchConnected);
+            jsonObj.put("watchAppRunning", watchAppRunning);
+            jsonObj.put("haveSettings", haveSettings);
             jsonObj.put("alarmState", alarmState);
             jsonObj.put("alarmPhrase", alarmPhrase);
             jsonObj.put("sdMode", mSdMode);
@@ -312,7 +315,8 @@ public class SdData implements Parcelable {
             jsonObj.put("hrAlarmStanding", mHRAlarmStanding);
             jsonObj.put("hrThreshMin", mHRThreshMin);
             jsonObj.put("hrThreshMax", mHRThreshMax);
-            jsonObj.put("hr", mHR);
+            jsonObj.put("hr", heartCur);
+            jsonObj.put("curHeartAvg", heartAvg);
             jsonObj.put("o2SatAlarmActive", mO2SatAlarmActive);
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
@@ -366,7 +370,7 @@ public class SdData implements Parcelable {
         retval = retval + ", " + roiPower;
         retval = retval + ", " + mSampleFreq;
         retval = retval + ", " + alarmPhrase;
-        retval = retval + ", " + mHR;
+        retval = retval + ", " + heartCur;
         retval = retval + ", " + mO2Sat;
         if (includeRawData) {
             for (int i = 0; i < mNsamp; i++) {

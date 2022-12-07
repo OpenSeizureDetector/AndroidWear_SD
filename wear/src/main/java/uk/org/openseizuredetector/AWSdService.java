@@ -211,8 +211,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
         mMobileNodeUri = messageEvent.getSourceNodeId();
+
+        //mNodeFullName = c.
         final String s1 = Arrays.toString(messageEvent.getData());
         final String messageEventPath = messageEvent.getPath();
+        Log.v(TAG, "messageEvent string" + messageEvent.toString());
         Log.v(
                 TAG_MESSAGE_RECEIVED,
                 "onMessageReceived() A message from watch was received:"
@@ -254,6 +257,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             try {
                 Log.v(TAG, "onMessageReived() : if receivedData ");
                 mSdData.fromJSON(s1);
+
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
@@ -395,7 +399,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
         // Initialise the Google API Client so we can use Android Wear messages.
         try {
-            if (mSdData.serverOK) {
+            if (!mSdData.serverOK) {
 
                 sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             }

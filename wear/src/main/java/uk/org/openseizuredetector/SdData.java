@@ -24,6 +24,7 @@
 */
 package uk.org.openseizuredetector;
 
+import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.format.Time;
@@ -86,6 +87,7 @@ public class SdData implements Parcelable {
     public double rawData3D[];
     public double dT;
     public boolean watchConnected = false;
+    public short curHeartAvg = 0;
 
     /* Analysis results */
     public Time dataTime = null;
@@ -104,12 +106,13 @@ public class SdData implements Parcelable {
     public boolean serverOK = false;
     public boolean mHRFaultStanding = false;
     public double mHR = 0;
+    public double mO2Sat = 0d;
+
     public boolean mO2SatAlarmStanding = false;
     public boolean mO2SatFaultStanding = false;
-    public double mO2Sat = 0;
+    int mNsamp = 0;
     public String mDataType;
     public String phoneName = "";
-    int mNsamp = 0;
 
 
     public SdData() {
@@ -118,6 +121,7 @@ public class SdData implements Parcelable {
         rawData3D = new double[N_RAW_DATA * 3];
         dT = 0d;
         dataTime = new Time(Time.getCurrentTimezone());
+        mSampleFreq = 25;
     }
 
     /*
@@ -139,7 +143,7 @@ public class SdData implements Parcelable {
             Log.v(TAG, "fromJSON(): dataTime = " + dataTime.toString());
             maxVal = jo.optInt("maxVal");
             maxFreq = jo.optInt("maxFreq");
-            mSampleFreq = jo.optLong("sampleFreq");
+            mSampleFreq = jo.optLong("sampleFreq", 25);
             specPower = jo.optInt("specPower");
             roiPower = jo.optInt("roiPower");
             batteryPc = jo.optInt("batteryPc");
@@ -167,7 +171,7 @@ public class SdData implements Parcelable {
             Log.v(TAG, "fromJSON(): sdData = " + this.toString());
             return true;
         } catch (Exception e) {
-            Log.v(TAG, "fromJSON() - error parsing result" + e.toString());
+            Log.e(TAG, "fromJSON() - error parsing result", e);
             haveData = false;
             return false;
         }
@@ -197,6 +201,7 @@ public class SdData implements Parcelable {
             Log.v(TAG, "mSdData.dataTime = " + dataTime);
             jsonObj.put("maxVal", maxVal);
             jsonObj.put("maxFreq", maxFreq);
+            jsonObj.put("sampleFreq", mSampleFreq);
             jsonObj.put("specPower", specPower);
             jsonObj.put("roiPower", roiPower);
             jsonObj.put("roiRatio", 10 * roiPower / specPower);
@@ -273,6 +278,8 @@ public class SdData implements Parcelable {
             jsonObj.put("watchSdName", watchSdName);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchSdVersion", watchSdVersion);
+            jsonObj.put("dataType", "settings");
+            jsonObj.put("phoneName", Build.HOST);
             Log.v(TAG, "phoneAppVersion=" + phoneAppVersion);
 
             retval = jsonObj.toString();

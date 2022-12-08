@@ -155,8 +155,8 @@ public class SdData implements Parcelable {
             alarmRatioThresh = jo.optInt("alarmRatioThresh");
             mHRAlarmActive = jo.optBoolean("hrAlarmActive");
             mHRAlarmStanding = jo.optBoolean("hrAlarmStanding");
-            mHRThreshMax = (short) jo.optInt("hrThreshMin");
-            mHRThreshMin = (short) jo.optInt("hrThreshMax");
+            mHRThreshMax = (short) jo.optInt("hrThreshMax");
+            mHRThreshMin = (short) jo.optInt("hrThreshMin");
             mDataType = jo.optString("dataType", "raw");
             phoneName = jo.optString("phoneName");
             mHR = (short) jo.optInt("hr");
@@ -207,7 +207,8 @@ public class SdData implements Parcelable {
             jsonObj.put("roiRatio", 10 * roiPower / specPower);
             jsonObj.put("alarmState", alarmState);
             jsonObj.put("alarmPhrase", alarmPhrase);
-            jsonObj.put("hr", heartCur);
+            jsonObj.put("heartCur", heartCur);
+            jsonObj.put("hr", mHR);
             jsonObj.put("o2Sat", mO2Sat);
             jsonObj.put("dataType", mDataType);
             JSONArray arr = new JSONArray();

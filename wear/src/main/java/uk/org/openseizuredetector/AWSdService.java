@@ -672,6 +672,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSdData.alarmRatioThresh = mAlarmRatioThresh;
             mSdData.alarmTime = mAlarmTime;
             mSdData.heartCur = curHeart;
+            mSdData.mHR = curHeart;
             mSdData.heartAvg = avgHeart;
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
             Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);

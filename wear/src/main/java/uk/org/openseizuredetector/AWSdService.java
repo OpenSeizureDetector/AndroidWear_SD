@@ -339,9 +339,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
             mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
             mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
-            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mSensorManager.registerListener(this, mHeartBeatSensor, SensorManager.SENSOR_DELAY_UI);
             mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
-            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mSensorManager.registerListener(this, mBloodPressure, SensorManager.SENSOR_DELAY_UI);
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
         } catch (Exception e) {

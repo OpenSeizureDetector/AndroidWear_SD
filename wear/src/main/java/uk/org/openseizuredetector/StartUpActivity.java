@@ -89,6 +89,7 @@ public class StartUpActivity extends Activity {
         //        mTextView = (TextView) stub.findViewById(R.id.startUpStatusTv);
         //    }
         // });
+        mTextView = (TextView) findViewById(R.id.text);
         toggleButton = (ToggleButton) findViewById(R.id.toggleButton1);
         mAlarmText = (TextView) findViewById(R.id.text1);
         mOKButton = (Button) findViewById(R.id.button);
@@ -193,8 +194,10 @@ public class StartUpActivity extends Activity {
                 Log.d(TAG, "ALREADY GRANTED");
             }
 
-            //if (mTextView != null) mTextView.setText("Service Started");
-            //if (mTextView != null) mTextView.setText("onStart");
+            if (mTextView != null)
+                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": Service Started").toString());
+            if (mTextView != null)
+                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": onStart").toString());
             bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
         }
     }
@@ -250,21 +253,34 @@ public class StartUpActivity extends Activity {
         @Override
         public void run() {
             runOnUiThread(() -> {
-                if (mAWSdService == null) {
-                    Log.v(TAG, "UpdateUiTask - service is null");
-                    if (mTextView != null) mTextView.setText("NOT CONNECTED");
-                } else {
-                    //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
-                    if (mTextView != null) mTextView.setText("mNsamp=" + mAWSdService.mNSamp);
-                    if (mAlarmText != null && mAWSdService.mSdData != null) {
-                        if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
-                            mAlarmText.setVisibility(View.VISIBLE);
-                        } else {
-                            mAlarmText.setVisibility(View.INVISIBLE);
+                try {
+
+                    if (mAWSdService == null) {
+                        Log.v(TAG, "UpdateUiTask - service is null");
+                        if (mTextView != null)
+                            mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": NOT CONNECTED").toString());
+                    } else {
+                        if (mAWSdService.mSdData == null)
+                            mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": NOT CONNECTED").toString());
+                        else {
+                            //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
+                            if (mTextView != null)
+                                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": mNsamp=").append(mAWSdService.mNSamp).toString());
+                            if (mAlarmText != null && mAWSdService.mSdData != null) {
+                                if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
+                                    mAlarmText.setVisibility(View.VISIBLE);
+                                } else {
+                                    mAlarmText.setVisibility(View.INVISIBLE);
+                                }
+                            }
                         }
                     }
 
+
+                } catch (Exception e) {
+                    Log.e(TAG, "UpdateUiTask() - runOnUiThread(): ", e);
                 }
+
             });
         }
     }

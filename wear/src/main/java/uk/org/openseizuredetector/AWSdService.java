@@ -30,7 +30,6 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
 import com.google.android.gms.tasks.Task;
-import com.google.android.gms.tasks.Tasks;
 import com.google.android.gms.wearable.CapabilityClient;
 import com.google.android.gms.wearable.CapabilityInfo;
 import com.google.android.gms.wearable.MessageClient;
@@ -48,9 +47,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public class AWSdService extends Service implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
 
@@ -238,7 +234,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 bindSensorListeners();
                 Log.d(TAG, "We returned from sending message.");
             } catch (Exception e) {
-                Log.v(TAG, "Received new settings failed to process", e);
+                Log.e(TAG, "Received new settings failed to process", e);
             }
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_TEST_RECEIVED)) {
             //TODO
@@ -260,12 +256,24 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     if (mNodeFullName == null) createFromNode = true;
                     else if (mNodeFullName.isEmpty()) createFromNode = true;
                     if (createFromNode) {
-                        Task<List<Node>> nodeliststask = mNodeListClient.getConnectedNodes();
-                        List<Node> nodelists = nodeliststask.getResult();
-                        for (Node connectedNode : nodelists) {
-                            if (connectedNode.getId().equals(mMobileNodeUri)) {
-                                mNodeFullName = connectedNode.getDisplayName();
-                            }
+                        try {
+                            Task<List<Node>> nodeliststask = mNodeListClient.getConnectedNodes();
+
+
+                            nodeliststask.addOnCompleteListener(task -> {
+                                        if (task.isSuccessful()) {
+                                            List<Node> nodelists = task.getResult();
+                                            for (Node connectedNode : nodelists) {
+                                                if (connectedNode.getId().equals(mMobileNodeUri)) {
+                                                    mNodeFullName = connectedNode.getDisplayName();
+                                                }
+                                            }
+                                        }
+                                    }
+                            );
+                        } catch (Exception e) {
+                            Log.e(TAG, "onMessageReceived():  ", e);
+                            successInitialSend = false;
                         }
                         Log.v(TAG, "catch me!");
                     }
@@ -857,18 +865,18 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 if (createFromNode) {
                     try {
                         Task<List<Node>> nodeliststask = mNodeListClient.getConnectedNodes();
-
-
-                        Tasks.await(nodeliststask, 200, TimeUnit.MILLISECONDS);
-                        if (nodeliststask.isSuccessful()) {
-                            List<Node> nodelists = nodeliststask.getResult();
-                            for (Node connectedNode : nodelists) {
-                                if (connectedNode.getId().equals(mMobileNodeUri)) {
-                                    mNodeFullName = connectedNode.getDisplayName();
+                        nodeliststask.addOnCompleteListener(task -> {
+                                    if (task.isSuccessful()) {
+                                        List<Node> nodelists = task.getResult();
+                                        for (Node connectedNode : nodelists) {
+                                            if (connectedNode.getId().equals(mMobileNodeUri)) {
+                                                mNodeFullName = connectedNode.getDisplayName();
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                    } catch (TimeoutException | ExecutionException | InterruptedException e) {
+                        );
+                    } catch (Exception e) {
                         Log.e(TAG, "onMessageReceived():  ", e);
                         successInitialSend = false;
                     }

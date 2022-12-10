@@ -114,8 +114,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private NodeClient mNodeListClient;
     private Context mContext;
     private Boolean mMobileDeviceConnected = false;
-    private String currentAckFromWearForAppOpenCheck = null;
-    private String currentAckFromWearForAppOpenCheck = null;
     // private Sensor mO2Sensor; disabled until privileged API Samsung is acquired
     private int mHeartMode = 0;   // 0=check data rate, 1=running
     private Intent notificationIntent = null;

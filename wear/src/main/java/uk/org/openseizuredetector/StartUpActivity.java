@@ -74,8 +74,9 @@ public class StartUpActivity extends Activity {
                     Log.d(TAG, "ALREADY GRANTED");
                 }
             }
-            bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
-
+            Object result = bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+            Log.v(TAG, "OnCreate(): result of result(bindService) " + result);
+            Log.v(TAG, "OnCreate(): result of mAWSdService: mSdData: " + mAWSdService.mSdData);
 
         }
         // final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
@@ -97,12 +98,20 @@ public class StartUpActivity extends Activity {
 
             @Override
             public void onClick(View v) {
-                if (toggleButton.isChecked()) {
-                    //checked is now true, meaning alarms should be off
-                    mAWSdService.mSdData.alarmState = 6;
-                } else {
-                    mAWSdService.mSdData.alarmState = 0;
-                    //checked is now false, meaning alarms should be on
+                try {
+                    if (mAWSdService.mSdData != null) {
+                        if (toggleButton.isChecked()) {
+                            //checked is now true, meaning alarms should be off
+                            mAWSdService.mSdData.alarmState = 6;
+                        } else {
+                            mAWSdService.mSdData.alarmState = 0;
+                            //checked is now false, meaning alarms should be on
+                        }
+                    } else {
+                        Log.e(TAG, "OnClick() illegal access of mAWSdService.mSdData", new Throwable());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "OnClick() illegal access of mAWSdService.mSdData", e);
                 }
             }
 
@@ -114,14 +123,24 @@ public class StartUpActivity extends Activity {
 
             @Override
             public void onClick(View v) {
-                //send OK Message
-                mAWSdService.mSdData.alarmState = 10;
-                mAWSdService.ClearAlarmCount();
-                mOkTimer = new Timer();
-                mOkTimer.schedule(new TurnOffOk(), 1000);
-                mAWSdService.handleSendingIAmOK();
-                //After sending message, Send activity to the background
-                moveTaskToBack(true);
+
+                try {
+                    if (mAWSdService.mSdData != null) {
+                        //send OK Message
+                        mAWSdService.mSdData.alarmState = 10;
+                        mAWSdService.ClearAlarmCount();
+                        mOkTimer = new Timer();
+                        mOkTimer.schedule(new TurnOffOk(), 1000);
+                        mAWSdService.handleSendingIAmOK();
+                        //After sending message, Send activity to the background
+                        moveTaskToBack(true);
+
+                    } else {
+                        Log.e(TAG, "OnClick() illegal access of mAWSdService.mSdData", new Throwable());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "OnClick() illegal access of mAWSdService.mSdData", e);
+                }
             }
         });
 
@@ -229,7 +248,7 @@ public class StartUpActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        stopService(new Intent(getBaseContext(), AWSdService.class));
+        //stopService(new Intent(getBaseContext(), AWSdService.class));
         super.onDestroy();
     }
 
@@ -275,10 +294,10 @@ public class StartUpActivity extends Activity {
                     if (mAWSdService == null) {
                         Log.v(TAG, "UpdateUiTask - service is null");
                         if (mTextView != null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": NOT mAWSdService not created").toString());
+                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
                     } else {
                         if (mAWSdService.mSdData == null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(":mAWSdService created, but mSdData NOT").toString());
+                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
                         else {
                             //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                             if (mTextView != null)

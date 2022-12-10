@@ -454,6 +454,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                                                        Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
                                                        mSdData.watchConnected = true;
                                                        mSdData.watchAppRunning = true;
+                                                       mSdData.mDataType = "watchConnected";
                                                        sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
                                                        //TODO: Deside what to do with the population of id and name. Nou this is being treated
                                                        // as broadcast to all client watches.
@@ -467,7 +468,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                                            }
                                        } catch (Exception e) {
-                                           Log.e(TAG, "onStartCommand() ", e);
+                                           Log.e(TAG, "onStartCommand() timerTask run()", e);
                                        }
 
                                    }
@@ -495,8 +496,18 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     );
             Wearable.getMessageClient(mContext).addListener(this);
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+            else try {
+                    // Set the data of the message to be the bytes of the Uri.
+                    Log.v(TAG, "Sending initial message: " + wearableAppCheckPayloadReturnACK);
+                    sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
+                    Log.d(TAG, "We returned from sending message.");
+                    if (successInitialSend) bindSensorListeners();
+                    Log.v(TAG, "onStartCommand(): result of successInitialSend: " + successInitialSend);
+                } catch (Exception e) {
+                    Log.e(TAG, "Received new settings failed to process", e);
+                }
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "Received new settings failed to process", e);
         }
         return mBinder;
     }
@@ -516,6 +527,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         try {
             mSdData.watchConnected = false;
             mSdData.watchAppRunning = false;
+            mSdData.mDataType = "watchDisconnect";
             sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);

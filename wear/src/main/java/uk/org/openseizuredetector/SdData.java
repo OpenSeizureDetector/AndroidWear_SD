@@ -296,7 +296,8 @@ public class SdData implements Parcelable {
         retval = "SdData.toDataString() Output";
         try {
 
-            mDataType = "data";
+            //if (! includeRawData) mDataType = "data"; datatype set before usage of toDataString
+            // at the end of toDataString if includeRawData: set to raw.
             JSONObject jsonObj = new JSONObject();
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));

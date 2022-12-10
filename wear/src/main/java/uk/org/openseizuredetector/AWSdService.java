@@ -374,6 +374,41 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
     }
 
+    private void initConnection() {
+        try {
+            Task<List<Node>> nodeliststask = mNodeListClient.getConnectedNodes();
+            nodeliststask.addOnCompleteListener(task -> {
+                        try {
+                            if (task.isSuccessful()) {
+                                List<Node> nodelists = task.getResult();
+                                for (Node connectedNode : nodelists) {
+                                    mSdData.mDataType = "watchConnected";
+                                    mSdData.watchAppRunning = true;
+                                    mSdData.watchConnected = true;
+                                    //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                                    // as broadcast to all client watches.
+                                    mMobileNodeUri = connectedNode.getId();
+                                    mNodeFullName = connectedNode.getDisplayName();
+                                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toJSON(false));
+
+                                }
+                            }
+                            successInitialSend = true;
+                        } catch (Exception e) {
+                            Log.e(TAG, "onMessageReceived():  ", e);
+                            successInitialSend = false;
+                        }
+
+                    }
+            );
+
+        } catch (Exception e) {
+            Log.e(TAG, "onMessageReceived():  ", e);
+            successInitialSend = false;
+        }
+
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.v(TAG, "onStartCommand()");
@@ -382,6 +417,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         try {
 
             if (mSdData == null) mSdData = new SdData();
+
             //if (mTextView != null) mTextView.setText("Service Started");
             //if (mTextView != null) mTextView.setText("onStart");
 
@@ -440,10 +476,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
         // Initialise the Google API Client so we can use Android Wear messages.
         try {
-            if (!mSdData.serverOK) {
-
-                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-            }
+            if (!mSdData.serverOK) initConnection();
         } catch (Exception e) {
             Log.e(TAG, "onStartCommand() ", e);
         }
@@ -454,27 +487,13 @@ public class AWSdService extends Service implements SensorEventListener, Message
                                        try {
                                            Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
                                            if (mAccData == null) mAccData = new double[NSAMP];
-                                           if (mNodeListClient instanceof List && !mSdData.serverOK) {
-                                               Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
-                                               List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
-                                               if (connectedNodes.size() > 0) {
-                                                   for (Node node : connectedNodes) {
-                                                       Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
-                                                       mSdData.watchConnected = true;
-                                                       mSdData.watchAppRunning = true;
-                                                       mSdData.mDataType = "watchConnected";
-                                                       sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                                                       //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                                                       // as broadcast to all client watches.
-                                                       mMobileNodeUri = node.getId();
-                                                       mNodeFullName = node.getDisplayName();
-                                                   }
-                                               } else {
-                                                   Log.e(TAG, "I should throw an exception; no nodes found");
-                                               }
-
-
+                                           if (mNodeListClient instanceof List && !mSdData.serverOK)
+                                               initConnection();
+                                           else {
+                                               Log.e(TAG, "I should throw an exception; no nodes found");
                                            }
+
+
                                        } catch (Exception e) {
                                            Log.e(TAG, "onStartCommand() timerTask run()", e);
                                        }
@@ -862,59 +881,43 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 boolean createFromNode = false;
                 if (mNodeFullName == null) createFromNode = true;
                 else if (mNodeFullName.isEmpty()) createFromNode = true;
-                if (createFromNode) {
-                    try {
-                        Task<List<Node>> nodeliststask = mNodeListClient.getConnectedNodes();
-                        nodeliststask.addOnCompleteListener(task -> {
-                                    if (task.isSuccessful()) {
-                                        List<Node> nodelists = task.getResult();
-                                        for (Node connectedNode : nodelists) {
-                                            if (connectedNode.getId().equals(mMobileNodeUri)) {
-                                                mNodeFullName = connectedNode.getDisplayName();
-                                            }
-                                        }
-                                    }
-                                }
-                        );
-                    } catch (Exception e) {
-                        Log.e(TAG, "onMessageReceived():  ", e);
-                        successInitialSend = false;
-                    }
-                    Log.v(TAG, "catch me!");
-                    //mNodeFullName = nodelists.indexOf(mWearNode.getDisplayName())
-                }
-
-                Log.v(TAG,
-                        "Sending message to "
-                                + mMobileNodeUri + " And name: " + mNodeFullName
-                );
-                sendMessageTask = Wearable.getMessageClient(mContext)
-                        .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
-
-                try {
-                    // Asynchronous callback for result of sendMessageTask
-                    sendMessageTask.addOnCompleteListener(task -> {
-                                if (task.isSuccessful()) {
-                                    Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
-
-                                } else {
-                                    // Log an error
-                                    Log.e(TAG, "ERROR: failed to send Message to: " + mMobileNodeUri);
-                                    mMobileDeviceConnected = false;
-                                    mMobileNodeUri = null;
-                                    mNodeFullName = null;
-                                    successInitialSend = false;
-                                }
-                            }
-                    );
-                    Log.d(TAG_MESSAGE_RECEIVED, "Ended task, result through callback.");
-                } catch (Exception e) {
-                    Log.e(TAG, "Error encoding string to bytes", e);
-                }
+                if (createFromNode) initConnection();
+                Log.v(TAG, "catch me!");
+                //mNodeFullName = nodelists.indexOf(mWearNode.getDisplayName())
             }
 
+            Log.v(TAG,
+                    "Sending message to "
+                            + mMobileNodeUri + " And name: " + mNodeFullName
+            );
+            sendMessageTask = Wearable.getMessageClient(mContext)
+                    .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
+
+            try {
+                // Asynchronous callback for result of sendMessageTask
+                sendMessageTask.addOnCompleteListener(task -> {
+                            if (task.isSuccessful()) {
+                                Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
+
+                            } else {
+                                // Log an error
+                                Log.e(TAG, "ERROR: failed to send Message to: " + mMobileNodeUri);
+                                mMobileDeviceConnected = false;
+                                mMobileNodeUri = null;
+                                mNodeFullName = null;
+                                successInitialSend = false;
+                            }
+                        }
+                );
+                Log.d(TAG_MESSAGE_RECEIVED, "Ended task, result through callback.");
+            } catch (Exception e) {
+                Log.e(TAG, "Error encoding string to bytes", e);
+            }
+
+
         } else {
-            Log.e(TAG, "SendMessageFailed: No node-Id initialized");
+            Log.e(TAG, "SendMessageFailed: No node-Id initialized", new Throwable());
+            initConnection();
             Wearable.getCapabilityClient(mContext)
                     .addListener(
                             this,

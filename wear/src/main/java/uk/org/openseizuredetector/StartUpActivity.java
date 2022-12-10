@@ -301,7 +301,12 @@ public class StartUpActivity extends Activity {
                         else {
                             //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                             if (mTextView != null)
-                                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mNsamp=").append(mAWSdService.mNSamp).toString());
+                                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round))
+                                        .append(": mNsamp=")
+                                        .append(mAWSdService.mNSamp)
+                                        .append(" Status of server: ")
+                                        .append(mAWSdService.mSdData.serverOK).toString());
+
                             if (mAlarmText != null && mAWSdService.mSdData != null) {
                                 if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
                                     mAlarmText.setVisibility(View.VISIBLE);

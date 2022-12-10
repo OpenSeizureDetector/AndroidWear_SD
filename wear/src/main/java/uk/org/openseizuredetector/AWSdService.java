@@ -52,7 +52,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     private final static String TAG = "AWSdService";
     public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
-    public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
     private final String wearableAppCheckPayload = "AppOpenWearable";
     private final String wearableAppCheckPayloadReturnACK = "AppOpenWearableACK";
     private final String TAG_MESSAGE_RECEIVED = "SdDataSourceAw";
@@ -63,14 +62,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private final String MESSAGE_ITEM_OSD_DATA_RECEIVED = "/data-received";
     private final String MESSAGE_ITEM_PATH = "/message-item";
-    private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private final String APP_OPEN_WEARABLE_PAYLOAD_PATH = "/APP_OPEN_WEARABLE_PAYLOAD";
     private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
     private static List<String> channelIDs = new ArrayList<>();
     private final String MESSAGE_ITEM_OSD_DATA_REQUESTED = "/data-requested";
     private final static int NSAMP = 250;
-    private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
-    private static List<String> channelIDs = new ArrayList<>();
     private final static int SIMPLE_SPEC_FMAX = 10;   // simple spectrum maximum freq in Hz.
     private SensorManager mSensorManager;
     private Sensor mSensor;
@@ -104,7 +100,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private int avgHeart = 0;
     private ArrayList<Integer> heartRates = new ArrayList<Integer>(10);
     private String currentAckFromWearForAppOpenCheck = null;
-    Vibrator mVibe;
     // private Sensor mO2Sensor; disabled until privileged API Samsung is acquired
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;

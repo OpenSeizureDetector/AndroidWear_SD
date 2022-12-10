@@ -484,9 +484,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onDestroy()");
         mSensorManager.unregisterListener(this);
         try {
-//            mSdData.watchConnected = false;
-//            mSdData.watchAppRunning = false;
-//            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+            mSdData.watchConnected = false;
+            mSdData.watchAppRunning = false;
+            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
         } catch (Exception e) {
@@ -785,6 +785,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "sendDataToPhone()");
         if (mSdData.batteryPc > 0) {
             mSdData.haveSettings = true;
+            mSdData.watchAppRunning = true;
         }
         sendMessage("/testMsg", "Test Message");
         sendMessage("/data", mSdData.toDataString(true));

@@ -191,10 +191,18 @@ public class StartUpActivity extends Activity {
             }
 
             if (mTextView != null)
-                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": Service Started").toString());
+                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
             if (mTextView != null)
-                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": onStart").toString());
-            bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": onStart").toString());
+            try {
+                bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
+                if (mTextView != null)
+                    mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Bound to AWSdService").toString());
+            } catch (Exception e) {
+                Log.e(TAG, "onStart(): Failed to bind to service: ", e);
+                if (mTextView != null)
+                    mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
+            }
         }
     }
 
@@ -267,14 +275,14 @@ public class StartUpActivity extends Activity {
                     if (mAWSdService == null) {
                         Log.v(TAG, "UpdateUiTask - service is null");
                         if (mTextView != null)
-                            mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": NOT CONNECTED").toString());
+                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": NOT mAWSdService not created").toString());
                     } else {
                         if (mAWSdService.mSdData == null)
-                            mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": NOT CONNECTED").toString());
+                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(":mAWSdService created, but mSdData NOT").toString());
                         else {
                             //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                             if (mTextView != null)
-                                mTextView.setText(new StringBuilder().append(R.string.hello_round).append(": mNsamp=").append(mAWSdService.mNSamp).toString());
+                                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mNsamp=").append(mAWSdService.mNSamp).toString());
                             if (mAlarmText != null && mAWSdService.mSdData != null) {
                                 if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {
                                     mAlarmText.setVisibility(View.VISIBLE);

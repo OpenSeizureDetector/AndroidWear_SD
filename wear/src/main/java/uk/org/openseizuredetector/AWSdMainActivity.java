@@ -1,13 +1,9 @@
 package uk.org.openseizuredetector;
 
 import android.app.Activity;
-import android.content.Context;
 import android.os.Bundle;
 import android.view.ViewStub;
-import android.util.Log;
 import android.widget.TextView;
-import android.view.MotionEvent;
-import android.widget.ToggleButton;
 
 public class AWSdMainActivity extends Activity {
 
@@ -18,13 +14,11 @@ public class AWSdMainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
         super.onCreate(savedInstanceState);
-
         setContentView(R.layout.activity_wear_app_main);
         final ViewStub stub = findViewById(R.id.watch_view_stub);
 
-        mTextView =  stub.findViewById(R.id.text);
+        mTextView = stub.findViewById(R.id.text);
 
 
     }

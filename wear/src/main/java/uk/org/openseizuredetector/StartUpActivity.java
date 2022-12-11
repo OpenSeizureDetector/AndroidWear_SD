@@ -222,20 +222,40 @@ public class StartUpActivity extends Activity {
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
             }
+            if (!mAWSdService.mSdData.serverOK) {
+                Log.e(TAG, "onStart(): no initialised server");
+
+                mAWSdService.initConnection();
+            }
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        Log.i(TAG, "onResume() - recreating defaults if needed");
+        try {
+            if (mContext == null) mContext = this;
+            if (mAWSdService == null) mAWSdService = new AWSdService();
+            if (mConnection == null) mConnection = new Connection(mContext);
+            if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
+
+        } catch (Exception e) {
+            Log.v(TAG, "onCreate(): Error in binding Service variable", e);
+        }
         Log.i(TAG, "onResume() - binding to Service");
         bindService(
                 new Intent(this, AWSdService.class),
                 mConnection = new Connection(mContext),
                 Context.BIND_AUTO_CREATE);
+        if (!mAWSdService.mSdData.serverOK) {
+            Log.e(TAG, "onResume(): no initialised server");
+            mAWSdService.reinitConnection();
+        }
         mUiTimer = new Timer();
         //TODO: disable update after test
         mUiTimer.schedule(new UpdateUiTask(), 0, 500);
+
     }
 
     @Override

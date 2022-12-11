@@ -232,6 +232,15 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 Log.v(TAG, "Sending return message: " + wearableAppCheckPayloadReturnACK);
                 sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
                 Log.d(TAG, "We returned from sending message.");
+                mSdData.haveSettings = true;
+                mSdData.watchAppRunning = true;
+                mSdData.watchConnected = true;
+                mSdData.haveData = true;
+
+                //TODO: Decide what to do with the population of id and name. Nou this is being treated
+                // as broadcast to all client watches.
+                mSdData.mDataType = "settings";
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
                 recallStartUpActivity();
             } catch (Exception e) {
                 Log.e(TAG, "Received new settings failed to process", e);
@@ -251,6 +260,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
+
+                //TODO: Decide what to do with the population of id and name. Nou this is being treated
+                // as broadcast to all client watches.
+                mSdData.mDataType = "settings";
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
                 recallStartUpActivity();
 
 
@@ -269,7 +283,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                 //TODO: Decide what to do with the population of id and name. Nou this is being treated
                 // as broadcast to all client watches.
-
+                mSdData.mDataType = "settings";
                 sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
                 recallStartUpActivity();
 
@@ -462,14 +476,15 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public IBinder onBind(Intent intent) {
         Log.v(TAG, "onBind()");
         try {
-            createNotificationChannel();
-            prepareAndStartForeground();
             Wearable.getCapabilityClient(mContext)
                     .addListener(
                             this,
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
+            createNotificationChannel();
+            prepareAndStartForeground();
+
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
             else try {
                     Log.v(TAG, "onBind(): no mSdData.serverOK, init connection from bind");
@@ -704,7 +719,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             checkAlarm();
 
         } catch (Exception e) {
-            Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
+            Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
         }
 
         try {

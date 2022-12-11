@@ -279,7 +279,6 @@ public class SdData implements Parcelable {
             jsonObj.put("watchSdName", watchSdName);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchSdVersion", watchSdVersion);
-            jsonObj.put("dataType", "settings");
             jsonObj.put("phoneName", Build.HOST);
             Log.v(TAG, "phoneAppVersion=" + phoneAppVersion);
 

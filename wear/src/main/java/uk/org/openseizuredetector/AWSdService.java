@@ -197,17 +197,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
         if (mSdData == null) mSdData = new SdData();
-        if (mSensorManager != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
-                ArrayList<String> arrayList = new ArrayList<String>();
-                for (Sensor sensor : sensors) {
-                    arrayList.add(sensor.getName());
-                }
 
-                arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
-            }
-        }
         Log.v(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
@@ -307,6 +297,17 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onCapabilityChanged(CapabilityInfo capabilityInfo) {
         Log.d(TAG, "CapabilityInfo received: " + capabilityInfo.toString());
+        if (mSensorManager != null && !mSdData.serverOK) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+                ArrayList<String> arrayList = new ArrayList<String>();
+                for (Sensor sensor : sensors) {
+                    arrayList.add(sensor.getName());
+                }
+
+                arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
+            }
+        }
         if (capabilityInfo.equals(Uri.parse("wear://"))) {
             mMobileNodesWithCompatibility = capabilityInfo;
             if (mMobileNodesWithCompatibility.getNodes().isEmpty()) {
@@ -618,8 +619,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public void onSensorChanged(SensorEvent event) {
+        //check if mSdData is populated
+        if (mSdData == null) mSdData = new SdData();
+        if (mSdData.dataTime == null) mSdData.dataTime = new Time();
         // is this a heartbeat event and does it have data?
-
         if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
             int newValue = Math.round(event.values[0]);
             //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
@@ -704,6 +707,16 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                         mNSamp = 0;
                         mStartTs = event.timestamp;
+                        try {
+                            mSdData.dataTime.setToNow();
+                            //mSdData.maxVal =    // not used
+                            //mSdData.maxFreq = 0;  // not usedx
+
+                            checkAlarm();
+
+                        } catch (Exception e) {
+                            Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
+                        }
                     } else if (mNSamp > NSAMP) {
                         Log.v(TAG, "Received data during analysis - ignoring sample");
                     }
@@ -714,20 +727,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 Log.v(TAG, "ERROR - Mode " + mMode + " unrecognised");
             }
         } else {
-            Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
-        }
-        try {
-            if (mSdData == null) mSdData = new SdData();
-            if (mSdData.dataTime == null) mSdData.dataTime = new Time();
-            mSdData.dataTime.setToNow();
-            //mSdData.maxVal =    // not used
-            //mSdData.maxFreq = 0;  // not usedx
+            Log.d(TAG, "SensorResult not caught sensor: " + mSensor.getName());
 
-            checkAlarm();
-
-        } catch (Exception e) {
-            Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
         }
+
 
 
     }

@@ -121,6 +121,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private Node mWearNode;
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
+    IntentFilter ifilter;
+    Intent batteryStatus;
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
@@ -338,6 +340,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public void bindSensorListeners() {
         try {
+            ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
             mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
             mSdData.watchFwVersion = Build.DISPLAY;
             mSdData.watchPartNo = Build.BOARD;
@@ -384,18 +388,19 @@ public class AWSdService extends Service implements SensorEventListener, Message
                             mSdData.watchAppRunning = true;
                             mSdData.watchConnected = true;
                             //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                                    // as broadcast to all client watches.
-                                    mMobileNodeUri = connectedNode.getId();
-                                    mNodeFullName = connectedNode.getDisplayName();
-                                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toJSON(false));
+                            // as broadcast to all client watches.
+                            mMobileNodeUri = connectedNode.getId();
+                            mNodeFullName = connectedNode.getDisplayName();
 
-                                }
-                            }
-                            successInitialSend = true;
-                        } catch (Exception e) {
+                            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toDataString(true));
+
+                        }
+                    }
+                    successInitialSend = true;
+                } catch (Exception e) {
                     Log.e(TAG, "initConnection():  ", e);
                     successInitialSend = false;
-                        }
+                }
 
                     }
             );
@@ -523,11 +528,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
             sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toJSON(false));
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
+            if (mWakeLock.isHeld()) mWakeLock.release();
             Log.e(TAG, "onDestroy(): we should not fire onDestroy! However just did....: ", new Throwable());
         } catch (Exception e) {
             Log.e(TAG, "onDestroy(): we should not fire onDestroy! However just did and exempted: ", e);
         }
-        mWakeLock.release();
 
     }
 
@@ -632,6 +637,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
             if (heartRates.size() < 4) {
                 avgHeart = 0;
             }
+
+            mSdData.heartCur = curHeart;
+            mSdData.mHR = curHeart;
+            mSdData.heartAvg = avgHeart;
         } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             if (mMode == 0) {
                 if (mStartEvent == null) {
@@ -680,6 +689,18 @@ public class AWSdService extends Service implements SensorEventListener, Message
                         Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
 
                         doAnalysis();
+                        mSdData.haveData = true;
+                        mSdData.haveSettings = true;
+                        mSdData.watchConnected = true;
+                        mSdData.alarmThresh = mAlarmThresh;
+                        mSdData.alarmRatioThresh = mAlarmRatioThresh;
+                        mSdData.alarmTime = mAlarmTime;
+
+                        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                        float batteryPct = 100 * level / (float) scale;
+                        mSdData.batteryPc = (int) (batteryPct);
+                        sendDataToPhone();
 
                         mNSamp = 0;
                         mStartTs = event.timestamp;
@@ -701,32 +722,13 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSdData.dataTime.setToNow();
             //mSdData.maxVal =    // not used
             //mSdData.maxFreq = 0;  // not usedx
-            mSdData.haveData = true;
-            mSdData.haveSettings = true;
-            mSdData.watchConnected = true;
-            mSdData.alarmThresh = mAlarmThresh;
-            mSdData.alarmRatioThresh = mAlarmRatioThresh;
-            mSdData.alarmTime = mAlarmTime;
-            mSdData.heartCur = curHeart;
-            mSdData.mHR = curHeart;
-            mSdData.heartAvg = avgHeart;
-            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-            Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
-            int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            float batteryPct = 100 * level / (float) scale;
-            mSdData.batteryPc = (int) (batteryPct);
+
             checkAlarm();
 
         } catch (Exception e) {
             Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
         }
 
-        try {
-            sendDataToPhone();
-        } catch (Exception e) {
-            Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
-        }
 
     }
 
@@ -795,7 +797,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
             for (int i = 0; i < SIMPLE_SPEC_FMAX; i++) {
                 mSdData.simpleSpec[i] = (int) simpleSpec[i];
             }
+            //sending from analysis
+            Log.v(TAG, "OnSensorChanged() doAnalasys() forced send");
 
+            mSdData.mDataType = "raw";
+            sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
 
         } catch (Exception e) {
             Log.e(TAG, "Failed Analysis internally: ", e);

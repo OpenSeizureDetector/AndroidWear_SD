@@ -348,19 +348,20 @@ public class SdData implements Parcelable {
                     rawArr.put(rawData[i]);
                 }
                 jsonObj.put("rawData", rawArr);
-
+                rawArr = null;
                 JSONArray raw3DArr = new JSONArray();
                 for (int i = 0; i < rawData3D.length; i++) {
                     raw3DArr.put(rawData3D[i]);
                 }
                 jsonObj.put("rawData3D", raw3DArr);
+                raw3DArr = null;
 
             }
             jsonObj.put("dataType", mDataType);
 
             retval = jsonObj.toString();
         } catch (Exception ex) {
-            Log.v(TAG, "Error Creating Data Object - " + ex.toString());
+            Log.e(TAG, "Error Creating Data Object - " + ex.toString(), ex);
             retval = "Error Creating Data Object - " + ex.toString();
         }
 

@@ -729,6 +729,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } else {
             Log.d(TAG, "SensorResult not caught sensor: " + mSensor.getName());
 
+
         }
 
 

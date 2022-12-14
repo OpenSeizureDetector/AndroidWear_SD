@@ -23,11 +23,21 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Vibrator;
+import android.os.health.HealthStats;
 import android.text.format.Time;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.health.connect.client.HealthConnectClient;
+import androidx.health.services.client.HealthServices;
+import androidx.health.services.client.HealthServicesClient;
+import androidx.health.services.client.MeasureCallback;
+import androidx.health.services.client.MeasureClient;
+import androidx.health.services.client.data.DataType;
+import androidx.health.services.client.data.DeltaDataType;
+import androidx.health.services.client.data.MeasureCapabilities;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wearable.CapabilityClient;
@@ -37,6 +47,7 @@ import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.NodeClient;
 import com.google.android.gms.wearable.Wearable;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import org.jtransforms.fft.DoubleFFT_1D;
 
@@ -47,8 +58,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.Executor;
 
-public class AWSdService extends Service implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
+public class AWSdService extends Service implements SensorEventListener,
+        MessageClient.OnMessageReceivedListener,
+        CapabilityClient.OnCapabilityChangedListener,
+        MeasureClient {
 
     private final static String TAG = "AWSdService";
     public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
@@ -71,8 +86,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private SensorManager mSensorManager;
     private Sensor mSensor;
     private int mMode = 0;   // 0=check data rate, 1=running
+    private HealthStats healthStats;
     private SensorEvent mStartEvent = null;
     private SensorManager mHeartSensorManager;
+    private HealthConnectClient mHealthConnectClient;
     private Sensor mHeartSensor;
     Vibrator mVibe;
     private Sensor mHeartBeatSensor;
@@ -88,6 +105,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private MessageEvent mMessageEvent = null;
     private String mMobileNodeUri = null;
     private boolean successInitialSend;
+    private boolean mSensorsBound = false;
 
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
@@ -121,6 +139,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private Node mWearNode;
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
+    private HealthServicesClient healthServicesClient;
+    private MeasureClient measureClient;
     IntentFilter ifilter;
     Intent batteryStatus;
 
@@ -287,7 +307,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
         Log.v(TAG, "onMessageReceived(): initialising sensors if not initialized.");
         try {
-            if (mSensorManager == null) bindSensorListeners();
+            if (mSensorManager == null && !mSensorsBound) bindSensorListeners();
         } catch (Exception e) {
             Log.e(TAG, "onMessageReceived(): failed to initialize sensors.", e);
         }
@@ -347,6 +367,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSdData.watchFwVersion = Build.DISPLAY;
             mSdData.watchPartNo = Build.BOARD;
             mSdData.watchSdName = Build.MODEL;
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
@@ -358,7 +379,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 } else {
                     Log.d(TAG, "ALREADY GRANTED");
                 }
+
             }
+
+
             mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_GAME);
@@ -370,9 +394,21 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSensorManager.registerListener(this, mBloodPressure, SensorManager.SENSOR_DELAY_UI);
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                registerMeasureCallback(DataType.VO2_MAX, this.);
+            }
         } catch (Exception e) {
             Log.e(TAG, "onStartCommand(): Sensor declaration excepmted: ", e);
         }
+        healthServicesClient = HealthServices.getClient(mContext);
+        measureClient = healthServicesClient.getMeasureClient();
+        measureClient.registerMeasureCallback(measureCallback());
+
+    }
+
+    private void measureCallback(DeltaDataType<?, ?> measureData) {
+        Log.v(TAG + "md", measureData.toString());
     }
 
     public void initConnection() {
@@ -412,6 +448,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
 
     }
+
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -491,7 +528,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             createNotificationChannel();
             prepareAndStartForeground();
 
-            if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+            if (mSdData != null) if (mSdData.serverOK) if (mSensorsBound) bindSensorListeners();
             else try {
                     Log.v(TAG, "onBind(): no mSdData.serverOK, init connection from bind");
                     // Initialise the Google API Client so we can use Android Wear messages.
@@ -513,7 +550,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
-
+        channel.notify();
         return super.onUnbind(intent);
     }
 
@@ -530,6 +567,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
             if (mWakeLock.isHeld()) mWakeLock.release();
+            if (mSensorsBound) mSensorsBound = false;
             Log.e(TAG, "onDestroy(): we should not fire onDestroy! However just did....: ", new Throwable());
         } catch (Exception e) {
             Log.e(TAG, "onDestroy(): we should not fire onDestroy! However just did and exempted: ", e);
@@ -548,11 +586,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
-            if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+            if (mSdData != null) if (mSdData.serverOK) if (!mSensorsBound) bindSensorListeners();
             Log.v(TAG, "onRebind()");
         } catch (Exception e) {
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
-            ;
+
         }
         super.onRebind(intent);
     }
@@ -945,6 +983,30 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
         }
 
+    }
+
+
+    @Override
+    public void registerMeasureCallback(@NonNull DeltaDataType<?, ?> deltaDataType, @NonNull MeasureCallback measureCallback) {
+
+    }
+
+    @Override
+    public void registerMeasureCallback(@NonNull DeltaDataType<?, ?> deltaDataType, @NonNull Executor executor, @NonNull MeasureCallback measureCallback) {
+
+    }
+
+
+    @NonNull
+    @Override
+    public ListenableFuture<MeasureCapabilities> getCapabilitiesAsync() {
+        return null;
+    }
+
+    @NonNull
+    @Override
+    public ListenableFuture<Void> unregisterMeasureCallbackAsync(@NonNull DeltaDataType<?, ?> deltaDataType, @NonNull MeasureCallback measureCallback) {
+        return null;
     }
 
     public class Access extends Binder {

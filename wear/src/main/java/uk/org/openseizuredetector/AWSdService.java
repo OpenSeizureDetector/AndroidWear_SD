@@ -30,14 +30,16 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.health.connect.client.HealthConnectClient;
-import androidx.health.services.client.HealthServices;
 import androidx.health.services.client.HealthServicesClient;
 import androidx.health.services.client.MeasureCallback;
 import androidx.health.services.client.MeasureClient;
-import androidx.health.services.client.data.DataType;
+import androidx.health.services.client.data.Availability;
+import androidx.health.services.client.data.DataPointContainer;
 import androidx.health.services.client.data.DeltaDataType;
 import androidx.health.services.client.data.MeasureCapabilities;
+import androidx.health.services.client.data.SampleDataPoint;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wearable.CapabilityClient;
@@ -123,7 +125,7 @@ public class AWSdService extends Service implements SensorEventListener,
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;
     private boolean logNotConnectedMessagePf;
-    NotificationManager notificationManager;
+    public String appName;
     private double dT;
     NotificationCompat.Builder notificationCompatBuilder;
     private IBinder mBinder = null;
@@ -143,10 +145,13 @@ public class AWSdService extends Service implements SensorEventListener,
     private MeasureClient measureClient;
     IntentFilter ifilter;
     Intent batteryStatus;
+    public String appDescription;
+    NotificationManagerCompat notificationManager;
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
         mContext = this;
+
         if (mSdData == null) mSdData = new SdData();
 
     }
@@ -161,14 +166,14 @@ public class AWSdService extends Service implements SensorEventListener,
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = getResources().getString(R.string.app_name);
-            String description = getResources().getString(R.string.app_name);
+            CharSequence name = appName;
+            String description = appDescription;
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
             channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
             channel.setDescription(description);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
-            notificationManager = getSystemService(NotificationManager.class);
+            notificationManager = NotificationManagerCompat.from(getApplicationContext());
             notificationManager.createNotificationChannel(channel);
             if (!notificationManager.areNotificationsEnabled()) {
                 Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
@@ -396,20 +401,40 @@ public class AWSdService extends Service implements SensorEventListener,
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                registerMeasureCallback(DataType.VO2_MAX, this.);
+                registerMeasureCallback(DeltaDataType.VO2_MAX, new MeasureCallback() {
+                    @Override
+                    public void onRegistered() {
+
+                    }
+
+                    @Override
+                    public void onRegistrationFailed(@NonNull Throwable throwable) {
+
+                    }
+
+                    @Override
+                    public void onAvailabilityChanged(@NonNull DeltaDataType<?, ?> deltaDataType, @NonNull Availability availability) {
+
+                    }
+
+                    @Override
+                    public void onDataReceived(@NonNull DataPointContainer dataPointContainer) {
+                        List<SampleDataPoint<Double>> mO2Data = dataPointContainer.getData(DeltaDataType.VO2_MAX);
+                        if (!mO2Data.isEmpty()) for (SampleDataPoint o2SamplePoint : mO2Data
+                        ) {
+                            mSdData.mO2Sat = (double) o2SamplePoint.getValue();
+
+                        }
+                    }
+                });
             }
         } catch (Exception e) {
             Log.e(TAG, "onStartCommand(): Sensor declaration excepmted: ", e);
         }
-        healthServicesClient = HealthServices.getClient(mContext);
-        measureClient = healthServicesClient.getMeasureClient();
-        measureClient.registerMeasureCallback(measureCallback());
+
 
     }
 
-    private void measureCallback(DeltaDataType<?, ?> measureData) {
-        Log.v(TAG + "md", measureData.toString());
-    }
 
     public void initConnection() {
         try {
@@ -430,10 +455,15 @@ public class AWSdService extends Service implements SensorEventListener,
                             mNodeFullName = connectedNode.getDisplayName();
 
                             sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toDataString(true));
-
+                            successInitialSend = true;
                         }
+                    } else {
+                        Log.e(TAG,
+                                "initConnection(): nodeliststask has endend with: isCancelled: "
+                                        + task.isCanceled() + "or task.isFailed: " + !task.isSuccessful());
+                        successInitialSend = false;
                     }
-                    successInitialSend = true;
+
                 } catch (Exception e) {
                     Log.e(TAG, "initConnection():  ", e);
                     successInitialSend = false;

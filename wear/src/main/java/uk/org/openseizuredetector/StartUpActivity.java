@@ -22,12 +22,15 @@ import android.widget.TextView;
 import android.widget.ToggleButton;
 
 import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.wear.ambient.AmbientModeSupport;
 
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class StartUpActivity extends Activity {
+public class StartUpActivity extends AppCompatActivity
+        implements AmbientModeSupport.AmbientCallbackProvider {
 
     private ServiceConnection mConnection;
     private static final String TAG = "StartUpActivity";
@@ -43,6 +46,7 @@ public class StartUpActivity extends Activity {
     private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private AWSdService mAWSdService;
     private Intent mServiceIntent;
+    private StringBuilder textViewBuilder;
 
 
     @Override
@@ -159,6 +163,13 @@ public class StartUpActivity extends Activity {
             }
         });
 
+        /*
+         * Declare an ambient mode controller, which will be used by
+         * the activity to determine if the current mode is ambient.
+         */
+        AmbientModeSupport.AmbientController ambientController = AmbientModeSupport.attach(this);
+
+
     }
 
     public Activity getActivity(Context context) {
@@ -237,6 +248,14 @@ public class StartUpActivity extends Activity {
         try {
             if (mContext == null) mContext = this;
             if (mAWSdService == null) mAWSdService = new AWSdService();
+            if (mAWSdService.appName == null)
+                mAWSdService.appName = getResources().getString(R.string.app_name);
+            else if (mAWSdService.appName.isEmpty())
+                mAWSdService.appName = getResources().getString(R.string.app_name);
+            if (mAWSdService.appDescription == null)
+                mAWSdService.appDescription = getResources().getString(R.string.hello_round);
+            else if (mAWSdService.appDescription.isEmpty())
+                mAWSdService.appDescription = getResources().getString(R.string.hello_round);
             if (mConnection == null) mConnection = new Connection(mContext);
             if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
 
@@ -245,8 +264,8 @@ public class StartUpActivity extends Activity {
         }
         Log.i(TAG, "onResume() - binding to Service");
         bindService(
-                new Intent(this, AWSdService.class),
-                mConnection = new Connection(mContext),
+                mServiceIntent,
+                mConnection,
                 Context.BIND_AUTO_CREATE);
         if (!mAWSdService.mSdData.serverOK) {
             Log.e(TAG, "onResume(): no initialised server");
@@ -277,6 +296,7 @@ public class StartUpActivity extends Activity {
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
         unbindService(mConnection);
+        mAWSdService.channel.notify();
         mUiTimer.cancel();
     }
 
@@ -293,6 +313,15 @@ public class StartUpActivity extends Activity {
         return false;
     }
 
+    /**
+     * @return the {@link AmbientModeSupport.AmbientCallback} to be used by this class to communicate with the
+     * entity interested in ambient events.
+     */
+    @Override
+    public AmbientModeSupport.AmbientCallback getAmbientCallback() {
+        return new MyAmbientCallback();
+    }
+
     private class TurnOffOk extends TimerTask {
         @Override
         public void run() {
@@ -305,23 +334,60 @@ public class StartUpActivity extends Activity {
         }
     }
 
+    private static class MyAmbientCallback extends AmbientModeSupport.AmbientCallback {
+        @Override
+        public void onEnterAmbient(Bundle ambientDetails) {
+            // Handle entering ambient mode
+        }
+
+        @Override
+        public void onExitAmbient() {
+            // Handle exiting ambient mode
+        }
+
+        @Override
+        public void onUpdateAmbient() {
+            // Update the content
+        }
+    }
+
+    private class Connection implements ServiceConnection {
+        public Connection(Context context) {
+            mContext = context;
+        }
+
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            AWSdService.Access access = ((AWSdService.Access) iBinder);
+            mAWSdService = access.getService();
+            Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            mAWSdService = null;
+            Log.i(TAG, "onServiceDisconnected()" + componentName.toShortString());
+        }
+    }
+
     private class UpdateUiTask extends TimerTask {
         @Override
         public void run() {
             runOnUiThread(() -> {
                 try {
+                    textViewBuilder = new StringBuilder();
 
                     if (mAWSdService == null) {
                         Log.v(TAG, "UpdateUiTask - service is null");
                         if (mTextView != null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
+                            mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
                     } else {
                         if (mAWSdService.mSdData == null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
+                            mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
                         else {
                             //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                             if (mTextView != null)
-                                mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round))
+                                mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round))
                                         .append(": mNsamp=")
                                         .append(mAWSdService.mNSamp)
                                         .append(" Status of server: ")
@@ -346,23 +412,5 @@ public class StartUpActivity extends Activity {
         }
     }
 
-    private class Connection implements ServiceConnection {
-        public Connection(Context context) {
-            mContext = context;
-        }
-
-        @Override
-        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
-            AWSdService.Access access = ((AWSdService.Access) iBinder);
-            mAWSdService = access.getService();
-            Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName componentName) {
-            mAWSdService = null;
-            Log.i(TAG, "onServiceDisconnected()" + componentName.toShortString());
-        }
-    }
 
 }

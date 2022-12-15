@@ -1,6 +1,8 @@
 package uk.org.openseizuredetector;
 
 
+import static com.google.android.material.internal.ContextUtils.getActivity;
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -172,7 +174,7 @@ public class StartUpActivity extends AppCompatActivity
 
     }
 
-    public Activity getActivity(Context context) {
+    public Activity mGgetActivity(Context context) {
         if (context == null) {
             return null;
         } else if (context instanceof ContextWrapper) {
@@ -201,7 +203,6 @@ public class StartUpActivity extends AppCompatActivity
             if (mAWSdService == null) mAWSdService = new AWSdService();
             if (mConnection == null) mConnection = new Connection(mContext);
             if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
-
         } catch (Exception e) {
             Log.v(TAG, "onCreate(): Error in binding Service variable", e);
         }
@@ -235,8 +236,7 @@ public class StartUpActivity extends AppCompatActivity
             }
             if (!mAWSdService.mSdData.serverOK) {
                 Log.e(TAG, "onStart(): no initialised server");
-
-                mAWSdService.initConnection();
+                mAWSdService.requestCreateNewChannelAndInit = true;
             }
         }
     }
@@ -269,7 +269,7 @@ public class StartUpActivity extends AppCompatActivity
                 Context.BIND_AUTO_CREATE);
         if (!mAWSdService.mSdData.serverOK) {
             Log.e(TAG, "onResume(): no initialised server");
-            mAWSdService.reinitConnection();
+            mAWSdService.requestCreateNewChannelAndInit = true;
         }
         mUiTimer = new Timer();
         //TODO: disable update after test

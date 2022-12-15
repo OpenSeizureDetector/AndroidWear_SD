@@ -165,20 +165,26 @@ public class AWSdService extends Service implements SensorEventListener,
     public void createNotificationChannel() {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = appName;
-            String description = appDescription;
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
-            channel.setDescription(description);
-            // Register the channel with the system; you can't change the importance
-            // or other notification behaviors after this
-            notificationManager = NotificationManagerCompat.from(getApplicationContext());
-            notificationManager.createNotificationChannel(channel);
-            if (!notificationManager.areNotificationsEnabled()) {
-                Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
+        try {
+            if (mContext == null) mContext = this;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                CharSequence name = appName;
+                String description = appDescription;
+                int importance = NotificationManager.IMPORTANCE_DEFAULT;
+                channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
+                channel.setDescription(description);
+                // Register the channel with the system; you can't change the importance
+                // or other notification behaviors after this
+                notificationManager = NotificationManagerCompat.from(mContext);
+                notificationManager.createNotificationChannel(channel);
+                if (!notificationManager.areNotificationsEnabled()) {
+                    Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "CreateNotificationChannel()", e);
         }
+
     }
 
     private void mStartForegroundService(Intent intent) {
@@ -580,7 +586,13 @@ public class AWSdService extends Service implements SensorEventListener,
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
-        channel.notify();
+
+        /*try{
+            if (this.mWakeLock.isHeld()) channel.
+            channel.notify();
+        }catch (IllegalStateException illegalStateException){
+            Log.e(TAG,"onUnbind(): no owner of thread",illegalStateException);
+        }*/
         return super.onUnbind(intent);
     }
 

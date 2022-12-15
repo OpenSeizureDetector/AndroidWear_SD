@@ -296,7 +296,6 @@ public class StartUpActivity extends AppCompatActivity
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
         unbindService(mConnection);
-        mAWSdService.channel.notify();
         mUiTimer.cancel();
     }
 

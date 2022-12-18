@@ -989,12 +989,11 @@ public class AWSdService extends Service implements SensorEventListener,
                 }
                 simpleSpec[ifreq] = simpleSpec[ifreq] / (binMax - binMin);
 
-                // Populate the mSdData structure to communicate with the main SdServer service.
-                mSdData.specPower = (long) specPower;
-                mSdData.roiPower = (long) roiPower;
-                mSdData.roiRatio = (long) roiRatio;
-
             }
+            // Populate the mSdData structure to communicate with the main SdServer service.
+            mSdData.specPower = (long) specPower;
+            mSdData.roiPower = (long) roiPower;
+            mSdData.roiRatio = (long) roiRatio;
             for (int i = 0; i < SIMPLE_SPEC_FMAX; i++) {
                 mSdData.simpleSpec[i] = (int) simpleSpec[i];
             }

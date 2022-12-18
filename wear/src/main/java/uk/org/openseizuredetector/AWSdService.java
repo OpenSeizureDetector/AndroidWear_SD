@@ -803,6 +803,15 @@ public class AWSdService extends Service implements SensorEventListener,
 
     }
 
+    public boolean isCharging() {
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = mContext.registerReceiver(null, ifilter);
+        int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean bCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL;
+        return bCharging;
+    }
+
     private void checkAlarm() {
         if (mSdData.alarmState == 6 || mSdData.alarmState == 10) {
             //ignore alarms when muted
@@ -825,8 +834,10 @@ public class AWSdService extends Service implements SensorEventListener,
             } else if (alarmCount > mSdData.warnTime) {
                 mSdData.alarmState = 1;
             }
-            long[] pattern = {0, 100, 200, 300};
-            mVibe.vibrate(pattern, -1);
+            if (!isCharging()) {
+                long[] pattern = {0, 100, 200, 300};
+                mVibe.vibrate(pattern, -1);
+            }
 
             //
         } else {
@@ -1033,7 +1044,6 @@ public class AWSdService extends Service implements SensorEventListener,
             mSdData.haveSettings = true;
             mSdData.watchAppRunning = true;
         }
-        sendMessage("/testMsg", "Test Message");
         sendMessage("/data", mSdData.toDataString(true));
     }
 

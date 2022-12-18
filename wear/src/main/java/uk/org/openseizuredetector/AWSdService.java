@@ -91,6 +91,7 @@ public class AWSdService extends Service implements SensorEventListener,
     private final static int SIMPLE_SPEC_FMAX = 10;   // simple spectrum maximum freq in Hz.
     private SensorManager mSensorManager;
     private Sensor mSensor;
+    private PowerManager pm;
     private int mMode = 0;   // 0=check data rate, 1=running
     private HealthStats healthStats;
     private SensorEvent mStartEvent = null;
@@ -106,12 +107,18 @@ public class AWSdService extends Service implements SensorEventListener,
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
     public double[] mAccData;
+    private double[] simpleSpec;
     public SdData mSdData;
     NotificationChannel channel;
     private MessageEvent mMessageEvent = null;
     private String mMobileNodeUri = null;
     private boolean successInitialSend;
     private boolean mSensorsBound = false;
+    private float x;
+    private float y;
+    private float z;
+    private DoubleFFT_1D fftDo;
+    private double[] fft;
 
     @Override
     public void onCreate() {
@@ -151,6 +158,9 @@ public class AWSdService extends Service implements SensorEventListener,
                 String channelIdToUse = returnNewCHANNEL_ID();
                 channel = new NotificationChannel(channelIdToUse, name, importance);
                 channel.setDescription(description);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    channel.setBlockable(true);
+                }
                 // Register the channel with the system; you can't change the importance
                 // or other notification behaviors after this
                 if (mContext != null) {
@@ -226,9 +236,9 @@ public class AWSdService extends Service implements SensorEventListener,
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
-            Log.v(TAG, "onRebind()");
+            Log.v(TAG, "onStartCommand()");
         } catch (Exception e) {
-            Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+            Log.e(TAG, "onStartCommand(): Exception in updating capabilityClient and messageClient", e);
             ;
         }
 
@@ -336,7 +346,7 @@ public class AWSdService extends Service implements SensorEventListener,
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
-
+                mSdData.dataTime.setToNow();
                 //TODO: Decide what to do with the population of id and name. Nou this is being treated
                 // as broadcast to all client watches.
                 mSdData.mDataType = "settings";
@@ -532,12 +542,14 @@ public class AWSdService extends Service implements SensorEventListener,
                             mSdData.mDataType = "watchConnect";
                             mSdData.watchAppRunning = true;
                             mSdData.watchConnected = true;
+                            mSdData.haveSettings = true;
                             //TODO: Deside what to do with the population of id and name. Nou this is being treated
                             // as broadcast to all client watches.
                             mMobileNodeUri = connectedNode.getId();
                             mNodeFullName = connectedNode.getDisplayName();
+                            mSdData.dataTime.setToNow();
 
-                            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toDataString(true));
+                            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toDataString(false));
                             successInitialSend = true;
                         }
                     } else {
@@ -564,8 +576,23 @@ public class AWSdService extends Service implements SensorEventListener,
 
     @Override
     public IBinder onBind(Intent intent) {
-        if (mContext == null) mContext = this.getApplicationContext();
         Log.v(TAG, "onBind()");
+        if (mContext == null) mContext = this.getApplicationContext();
+        if (sharedPreferenceManager == null)
+            sharedPreferenceManager = new SharedPreferenceManagerToReplace(mContext);
+        mSdData = new SdData();
+
+        mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+
+
+        // Prevent sleeping
+        if (pm == null)
+            pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
+        if (mWakeLock == null) mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
+
+        if (!mWakeLock.isHeld()) {
+            mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
+        }
         try {
             Wearable.getCapabilityClient(mContext)
                     .addListener(
@@ -608,7 +635,7 @@ public class AWSdService extends Service implements SensorEventListener,
             mSdData.watchConnected = false;
             mSdData.watchAppRunning = false;
             mSdData.mDataType = "watchDisconnect";
-            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toJSON(false));
+            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
             if (mWakeLock != null) if (mWakeLock.isHeld()) mWakeLock.release();
@@ -624,12 +651,16 @@ public class AWSdService extends Service implements SensorEventListener,
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
 
-        /*try{
-            if (this.mWakeLock.isHeld()) channel.
-            channel.notify();
-        }catch (IllegalStateException illegalStateException){
-            Log.e(TAG,"onUnbind(): no owner of thread",illegalStateException);
-        }*/
+        try {
+            if (this.mWakeLock != null) {
+                Log.v(TAG, "onUnbind() mWakeLock=" + mWakeLock.isHeld());
+            }
+            if (channel != null) if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (channel.isBlockable()) channel.notify();
+            }
+        } catch (IllegalStateException illegalStateException) {
+            Log.e(TAG, "onUnbind(): no owner of thread", illegalStateException);
+        }
         return super.onUnbind(intent);
     }
 
@@ -680,6 +711,7 @@ public class AWSdService extends Service implements SensorEventListener,
             mSdData.heartCur = curHeart;
             mSdData.mHR = curHeart;
             mSdData.heartAvg = avgHeart;
+            checkAlarm();
         } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             if (mMode == 0) {
                 if (mStartEvent == null) {
@@ -691,7 +723,7 @@ public class AWSdService extends Service implements SensorEventListener,
                 } else {
                     mNSamp++;
                 }
-                if (mNSamp >= 1000) {
+                if (mNSamp == 1000) {
                     Log.v(TAG, "Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
                     dT = 1e-9 * (event.timestamp - mStartTs);
                     mSdData.dT = dT;
@@ -704,9 +736,9 @@ public class AWSdService extends Service implements SensorEventListener,
                 }
             } else if (mMode == 1) {
                 try {
-                    float x = event.values[0];
-                    float y = event.values[1];
-                    float z = event.values[2];
+                    x = event.values[0];
+                    y = event.values[1];
+                    z = event.values[2];
                     //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
                     if (mAccData == null) {
                         mAccData = new double[NSAMP];
@@ -715,9 +747,10 @@ public class AWSdService extends Service implements SensorEventListener,
                             Log.v(TAG, "OnSensorChanged(): error in arraybuilder");
                     }
 
-                    assert mAccData != null;
-                    mAccData[mNSamp] = (x * x + y * y + z * z);
-                    mNSamp++;
+                    if (mAccData != null) {
+                        mAccData[mNSamp] = (x * x + y * y + z * z);
+                        mNSamp++;
+                    }
                     if (mNSamp == NSAMP) {
                         // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
                         // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
@@ -748,7 +781,6 @@ public class AWSdService extends Service implements SensorEventListener,
                             //mSdData.maxVal =    // not used
                             //mSdData.maxFreq = 0;  // not usedx
 
-                            checkAlarm();
 
                         } catch (Exception e) {
                             Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
@@ -757,7 +789,7 @@ public class AWSdService extends Service implements SensorEventListener,
                         Log.v(TAG, "Received data during analysis - ignoring sample");
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "OnSensorChanged(): trying to process accellerationData failed", e);
+                    Log.e(TAG, "OnSensorChanged(): trying to process accelerationData failed", e);
                 }
             } else {
                 Log.v(TAG, "ERROR - Mode " + mMode + " unrecognised");
@@ -839,39 +871,40 @@ public class AWSdService extends Service implements SensorEventListener,
         Log.v(TAG, "sendMessage(" + path + "," + text + ")");
         Task<Integer> sendMessageTask = null;
         if (mMobileNodeUri != null) {
-            if (mMobileNodeUri.isEmpty()) {
-                Wearable.getCapabilityClient(mContext)
-                        .addListener(
-                                this,
-                                Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                        );
-                Wearable.getMessageClient(mContext).addListener(this);
-                Log.e(TAG, "SendMessageFailed: No node-Id stored");
-            } else {
-                String tmpFullname;
-                boolean createFromNode = false;
-                if (mNodeFullName == null) createFromNode = true;
-                else if (mNodeFullName.isEmpty()) createFromNode = true;
-                if (createFromNode) initConnection();
-                //mNodeFullName = nodelists.indexOf(mWearNode.getDisplayName())
-            }
-
-            Log.v(TAG,
-                    "Sending message to "
-                            + mMobileNodeUri + " And name: " + mNodeFullName
-            );
-            sendMessageTask = Wearable.getMessageClient(mContext)
-                    .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
-
             try {
+                if (mMobileNodeUri.isEmpty()) {
+                    Wearable.getCapabilityClient(mContext)
+                            .addListener(
+                                    this,
+                                    Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                            );
+                    Wearable.getMessageClient(mContext).addListener(this);
+                    Log.e(TAG, "SendMessageFailed: No node-Id stored");
+                } else {
+                    String tmpFullname;
+                    boolean createFromNode = false;
+                    if (mNodeFullName == null) createFromNode = true;
+                    else if (mNodeFullName.isEmpty()) createFromNode = true;
+                    if (createFromNode) initConnection();
+                    //mNodeFullName = nodelists.indexOf(mWearNode.getDisplayName())
+                }
+
+                Log.v(TAG,
+                        "Sending message to "
+                                + mMobileNodeUri + " And name: " + mNodeFullName
+                );
+                sendMessageTask = Wearable.getMessageClient(mContext)
+                        .sendMessage(mMobileNodeUri, path, text.getBytes(StandardCharsets.UTF_8));
+
+
                 // Asynchronous callback for result of sendMessageTask
                 sendMessageTask.addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
+                    if (task.isSuccessful()) {
+                        Log.v(TAG, "Message: {" + text + "} sent to: " + mMobileNodeUri);
 
-                            } else {
-                                // Log an error
-                                Log.e(TAG, "ERROR: failed to send Message to: " + mMobileNodeUri);
+                    } else {
+                        // Log an error
+                        Log.e(TAG, "ERROR: failed to send Message to: " + mMobileNodeUri);
                                 mMobileDeviceConnected = false;
                                 mMobileNodeUri = null;
                                 mNodeFullName = null;
@@ -881,7 +914,7 @@ public class AWSdService extends Service implements SensorEventListener,
                 );
                 Log.d(TAG_MESSAGE_RECEIVED, "Ended task, result through callback.");
             } catch (Exception e) {
-                Log.e(TAG, "Error encoding string to bytes", e);
+                Log.e(TAG, "sendMessage() if (mMobileNodeUri) try: Error encoding string to bytes", e);
             }
 
 
@@ -916,9 +949,11 @@ public class AWSdService extends Service implements SensorEventListener,
             double nFreqCutoff = mFreqCutoff / freqRes;
             Log.v(TAG, "mFreqCutoff = " + mFreqCutoff + ", nFreqCutoff=" + nFreqCutoff);
 
-            DoubleFFT_1D fftDo = new DoubleFFT_1D(mNSamp);
-            double[] fft = new double[mNSamp * 2];
+            fftDo = new DoubleFFT_1D(mNSamp);
+            fft = new double[mNSamp * 2];
+            mSdData.rawData = new double[mNSamp * 2];
             System.arraycopy(mAccData, 0, fft, 0, mNSamp);
+            System.arraycopy(mAccData, 0, mSdData.rawData, 0, mNSamp);
             fftDo.realForwardFull(fft);
 
             // Calculate the whole spectrum power (well a value equivalent to it that avoids suare root calculations
@@ -944,7 +979,7 @@ public class AWSdService extends Service implements SensorEventListener,
             double roiRatio = 10 * roiPower / specPower;
 
             // Calculate the simplified spectrum - power in 1Hz bins.
-            double[] simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
+            simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
             for (int ifreq = 0; ifreq < SIMPLE_SPEC_FMAX; ifreq++) {
                 double binMin = 1.0 + ifreq / freqRes;    // add 1 to loose dc component
                 double binMax = 1.0 + (ifreq + 1.0) / freqRes;
@@ -967,10 +1002,12 @@ public class AWSdService extends Service implements SensorEventListener,
             Log.v(TAG, "OnSensorChanged() doAnalasys() forced send");
 
             mSdData.mDataType = "raw";
-            sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+            mSdData.dataTime.setToNow();
+            //sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed Analysis internally: ", e);
+            Log.e(TAG, "doAnalysis():  Failed Analysis internally: ", e);
+            boolean ttt = false;
         }
     }
 

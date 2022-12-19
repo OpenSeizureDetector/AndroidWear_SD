@@ -211,6 +211,10 @@ public class SdData implements Parcelable {
             jsonObj.put("hr", mHR);
             jsonObj.put("o2Sat", mO2Sat);
             jsonObj.put("dataType", mDataType);
+            jsonObj.put("sdName", watchSdName);
+            jsonObj.put("sdVersion", watchSdVersion);
+            jsonObj.put("watchFwVersion", watchFwVersion);
+            jsonObj.put("watchPartNo", watchPartNo);
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
@@ -334,6 +338,10 @@ public class SdData implements Parcelable {
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
             jsonObj.put("o2Sat", mO2Sat);
+            jsonObj.put("sdName", watchSdName);
+            jsonObj.put("sdVersion", watchSdVersion);
+            jsonObj.put("watchFwVersion", watchFwVersion);
+            jsonObj.put("watchPartNo", watchPartNo);
 
             JSONArray arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {

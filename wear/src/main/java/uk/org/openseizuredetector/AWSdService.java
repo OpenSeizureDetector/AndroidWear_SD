@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
@@ -46,6 +47,8 @@ import androidx.preference.PreferenceManager;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wearable.CapabilityClient;
 import com.google.android.gms.wearable.CapabilityInfo;
+import com.google.android.gms.wearable.DataClient;
+import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.MessageClient;
 import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Node;
@@ -67,6 +70,7 @@ import java.util.concurrent.Executor;
 public class AWSdService extends Service implements SensorEventListener,
         MessageClient.OnMessageReceivedListener,
         CapabilityClient.OnCapabilityChangedListener,
+        DataClient.OnDataChangedListener,
         MeasureClient {
 
     public boolean requestCreateNewChannelAndInit = false;
@@ -187,6 +191,10 @@ public class AWSdService extends Service implements SensorEventListener,
     // private Sensor mO2Sensor; disabled until privileged API Samsung is acquired
     private int mHeartMode = 0;   // 0=check data rate, 1=running
     private Intent notificationIntent = null;
+    public ServiceConnection parentConnection;
+    private Intent parentIntent;
+    private int parentStartID;
+    private StartUpActivity startUpActivity;
     private Node mWearNode;
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
@@ -196,6 +204,7 @@ public class AWSdService extends Service implements SensorEventListener,
     Intent batteryStatus;
     public String appDescription;
     NotificationManagerCompat notificationManager;
+
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
@@ -216,10 +225,12 @@ public class AWSdService extends Service implements SensorEventListener,
         Log.v(TAG, "onStartCommand()");
         mContext = getApplicationContext();
         sharedPreferenceManager = new SharedPreferenceManagerToReplace(mContext);
+        parentIntent = intent;
         mAccData = new double[NSAMP];
         mSdData = new SdData();
-
+        parentStartID = startId;
         mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        startUpActivity = new StartUpActivity();
 
 
         // Prevent sleeping
@@ -241,7 +252,7 @@ public class AWSdService extends Service implements SensorEventListener,
             Log.e(TAG, "onStartCommand(): Exception in updating capabilityClient and messageClient", e);
             ;
         }
-
+        mContext.bindService(parentIntent, parentConnection, BIND_ABOVE_CLIENT);
         Timer appStartTimer = new Timer();
         appStartTimer.schedule(new TimerTask() {
                                    @Override
@@ -1086,6 +1097,11 @@ public class AWSdService extends Service implements SensorEventListener,
 
         }
 
+    }
+
+    @Override
+    public void onDataChanged(@NonNull DataEventBuffer dataEventBuffer) {
+        Log.v(TAG, "onDataChanged(): processing datachange in Connection to Phone.");
     }
 
     public class SharedPreferenceManagerToReplace {

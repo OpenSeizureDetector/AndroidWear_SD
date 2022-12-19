@@ -358,6 +358,7 @@ public class StartUpActivity extends AppCompatActivity
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             AWSdService.Access access = ((AWSdService.Access) iBinder);
+            mAWSdService.parentConnection = new Connection(mContext);
             mAWSdService = access.getService();
             Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
         }

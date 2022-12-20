@@ -219,6 +219,7 @@ public class SdData implements Parcelable {
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
             }
+
             jsonObj.put("simpleSpec", arr);
             JSONArray rawArr = new JSONArray();
             for (int i = 0; i < rawData.length; i++) {

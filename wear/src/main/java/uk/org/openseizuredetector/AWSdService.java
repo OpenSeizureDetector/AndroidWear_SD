@@ -1,5 +1,7 @@
 package uk.org.openseizuredetector;
 
+import static java.lang.Math.sqrt;
+
 import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationChannel;
@@ -758,10 +760,11 @@ public class AWSdService extends Service implements SensorEventListener,
                             Log.v(TAG, "OnSensorChanged(): error in arraybuilder");
                     }
 
-                    if (mAccData != null) {
-                        mAccData[mNSamp] = (x * x + y * y + z * z);
-                        mNSamp++;
-                    }
+                    mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
+                    mSdData.rawData3D[3 * mSdData.mNsamp] = x;
+                    mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
+                    mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
+                    mSdData.mNsamp++;
                     if (mNSamp == NSAMP) {
                         // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
                         // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),

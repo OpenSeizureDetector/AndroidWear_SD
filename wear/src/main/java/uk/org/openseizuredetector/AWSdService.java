@@ -774,7 +774,7 @@ public class AWSdService extends Service implements SensorEventListener,
                         int sampleFreq = (int) (mNSamp / dT);
                         Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
 
-                        doAnalysis();
+                        //doAnalysis();
                         mSdData.haveData = true;
                         mSdData.haveSettings = true;
                         mSdData.watchConnected = true;

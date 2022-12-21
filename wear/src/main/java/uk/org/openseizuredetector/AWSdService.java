@@ -726,81 +726,67 @@ public class AWSdService extends Service implements SensorEventListener,
             mSdData.heartAvg = avgHeart;
             checkAlarm();
         } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
             if (mMode == 0) {
                 if (mStartEvent == null) {
-                    Log.v(TAG, "mMode=0 - checking Sample Rate - mNSamp = " + mNSamp);
-                    Log.v(TAG, "saving initial event data");
+                    Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
+                    Log.v(TAG, "onSensorChanged(): saving initial event data");
                     mStartEvent = event;
                     mStartTs = event.timestamp;
-                    mNSamp = 0;
+                    mSdData.mNsamp = 0;
                 } else {
-                    mNSamp++;
+                    mSdData.mNsamp++;
                 }
-                if (mNSamp == 1000) {
-                    Log.v(TAG, "Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                    dT = 1e-9 * (event.timestamp - mStartTs);
-                    mSdData.dT = dT;
-                    mSampleFreq = ((double) mNSamp) / dT;
-                    mSdData.mSampleFreq = (long) mSampleFreq;
-                    Log.v(TAG, "Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
+                if (mSdData.mNsamp >= 250) {
+                    Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
+                    double dT = 1e-9 * (event.timestamp - mStartTs);
+                    mSdData.mSampleFreq = (int) (mSdData.mNsamp / dT);
+                    mSdData.haveSettings = true;
+                    Log.v(TAG, "onSensorChanged(): Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
                     mMode = 1;
-                    mNSamp = 0;
+                    mSdData.mNsamp = 0;
                     mStartTs = event.timestamp;
                 }
+
+
             } else if (mMode == 1) {
                 try {
                     x = event.values[0];
                     y = event.values[1];
                     z = event.values[2];
                     //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                    if (mAccData == null) {
-                        mAccData = new double[NSAMP];
-                    } else {
-                        if (mAccData.length < mNSamp)
-                            Log.v(TAG, "OnSensorChanged(): error in arraybuilder");
-                    }
-
-                    mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
-                    mSdData.rawData3D[3 * mSdData.mNsamp] = x;
-                    mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
-                    mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
-                    mSdData.mNsamp++;
-                    if (mNSamp == NSAMP) {
-                        // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                        // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                        // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                        // FIXME - we should do some sort of check and disregard samples with long delays in them.
-                        double dT = 1e-9 * (event.timestamp - mStartTs);
-                        int sampleFreq = (int) (mNSamp / dT);
-                        Log.v(TAG, "Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
-
-                        //doAnalysis();
-                        mSdData.haveData = true;
-                        mSdData.haveSettings = true;
-                        mSdData.watchConnected = true;
-                        mSdData.alarmThresh = mAlarmThresh;
-                        mSdData.alarmRatioThresh = mAlarmRatioThresh;
-                        mSdData.alarmTime = mAlarmTime;
-
-                        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-                        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-                        float batteryPct = 100 * level / (float) scale;
-                        mSdData.batteryPc = (int) (batteryPct);
-                        sendDataToPhone();
-
-                        mNSamp = 0;
-                        mStartTs = event.timestamp;
-                        try {
-                            mSdData.dataTime.setToNow();
-                            //mSdData.maxVal =    // not used
-                            //mSdData.maxFreq = 0;  // not usedx
-
-
-                        } catch (Exception e) {
-                            Log.e(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
+                    if (!Objects.equals(mSdData.rawData, null) && mSdData.rawData.length > 0 && mSdData.rawData3D.length > 0) {
+                        mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
+                        mSdData.rawData3D[3 * mSdData.mNsamp] = x;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
+                        mSdData.mNsamp++;
+                        if (mSdData.mNsamp == NSAMP) {
+                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                            double dT = 1e-9 * (event.timestamp - mStartTs);
+                            int sampleFreq = (int) (mSdData.mNsamp / dT);
+                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+                            // DownSample from the 50Hz received frequency to 25Hz and convert to mg.
+                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
+                            for (int i = 0; i < mSdData.mNsamp; i++) {
+                                mSdData.rawData[i / 2] = 1000. * mSdData.rawData[i] / 9.81;
+                                mSdData.rawData3D[i / 2] = 1000. * mSdData.rawData3D[i] / 9.81;
+                                mSdData.rawData3D[i / 2 + 1] = 1000. * mSdData.rawData3D[i + 1] / 9.81;
+                                mSdData.rawData3D[i / 2 + 2] = 1000. * mSdData.rawData3D[i + 2] / 9.81;
+                                //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
+                            }
+                            mSdData.mNsamp /= 2;
+                            //doAnalysis();
+                            mSdData.mNsamp = 0;
+                            mStartTs = event.timestamp;
+                        } else if (mSdData.mNsamp > NSAMP) {
+                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
                         }
-                    } else if (mNSamp > NSAMP) {
-                        Log.v(TAG, "Received data during analysis - ignoring sample");
+                    } else {
+                        Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "OnSensorChanged(): trying to process accelerationData failed", e);

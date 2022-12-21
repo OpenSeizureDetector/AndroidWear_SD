@@ -355,6 +355,13 @@ public class AWSdService extends Service implements SensorEventListener,
                 Log.v(TAG, "Sending return message: " + wearableAppCheckPayloadReturnACK);
                 sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
                 Log.d(TAG, "We returned from sending message.");
+
+                ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
+                mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
+                mSdData.watchFwVersion = Build.DISPLAY;
+                mSdData.watchPartNo = Build.BOARD;
+                mSdData.watchSdName = Build.MODEL;
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
@@ -1043,8 +1050,11 @@ public class AWSdService extends Service implements SensorEventListener,
         if (mSdData.batteryPc > 0) {
             mSdData.haveSettings = true;
             mSdData.watchAppRunning = true;
+            sendMessage("/data", mSdData.toDataString(true));
+        } else {
+            Log.e(TAG, "sendDataToPhone: Cannot send message to phone. Error in fetching mSdData.batteryPc");
         }
-        sendMessage("/data", mSdData.toDataString(true));
+
     }
 
     public void createNotificationAndInitConnection() {

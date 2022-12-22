@@ -786,6 +786,7 @@ public class AWSdService extends Service implements SensorEventListener,
                                 //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
                             }
                             mSdData.mNsamp /= 2;
+                            sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                             //doAnalysis();
                             mSdData.mNsamp = 0;
                             mStartTs = event.timestamp;

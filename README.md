@@ -38,3 +38,15 @@ All code is licenced under GPL Version 3, unless stated otherwise within the cod
 The following libraries and other media are used in AndroidWear_SD
 * xxxx
 * xxxx
+
+## Special dedications:
+   As it might be a mere footnote. I would make a special honourable dedication 
+   of co-creating the WearOS/SD version to Domi Pandabeertje.
+   Even to special coincidental coherence of DSM-IV diagnosis, fibromyalgia and Epilepsy.
+   All in previous line typed challenges are suspected to be linked to a imbalance of
+   Gamma Amino Butter Acid(GABA) and or other neuro transmitters like Glutamate(aka Unami)
+  
+   My contribution here is to build a base for others dangling in purgatory by
+   diagnosis of Epilepsy and in my case previous only 9n DSM-IV and behavioral test based ASD, 
+   without a possibility of building up a (family) life and or even a career.
+   

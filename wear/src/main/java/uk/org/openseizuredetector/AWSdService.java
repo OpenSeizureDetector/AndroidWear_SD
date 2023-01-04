@@ -121,7 +121,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
     NotificationChannel channel;
     NotificationManager notificationManager;
     NotificationCompat.Builder notificationCompatBuilder;
-
+    private Intent intentFromOnStart;
+    private Intent intentFromOnBind;
+    private Intent intentFromOnRebind;
 
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
@@ -357,7 +359,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.v(TAG, "onStartCommand()");
+        intentFromOnStart=intent;
+        Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}" );
         int returnFromSuper=super.onStartCommand(intent,flags,startId);
         mContext = this;
         try {
@@ -465,6 +468,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public IBinder onBind(Intent intent) {
         Log.v(TAG, "onBind()");
+        intentFromOnBind=intent;
         super.onBind(intent);
         try {
             createNotificationChannel();
@@ -510,6 +514,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onRebind(Intent intent) {
         super.onRebind(intent);
+        intentFromOnRebind=intent;
         try {
             createNotificationChannel();
             prepareAndStartForeground();

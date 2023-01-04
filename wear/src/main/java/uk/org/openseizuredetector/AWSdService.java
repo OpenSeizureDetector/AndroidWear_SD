@@ -353,7 +353,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
         } catch (Exception e) {
-            Log.e(TAG, "onStartCommand(): Sensor declaration excepmted: ", e);
+            Log.e(TAG, "bindSensorListners(): Sensor declaration excepmted: ", e);
         }
     }
 

@@ -69,6 +69,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private final String APP_OPEN_WEARABLE_PAYLOAD_PATH = "/APP_OPEN_WEARABLE_PAYLOAD";
     public boolean requestCreateNewChannelAndInit;
     public StartUpActivity.Connection parentConnection;
+    public Context parentContext;
     private Context mContext;
     private Boolean mMobileDeviceConnected = false;
     private final static int NSAMP = 250;
@@ -113,7 +114,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     Vibrator mVibe;
     private IBinder mBinder = null;
 
-
+    public boolean mBound = false;
     private String mNodeFullName;
     private NodeClient mNodeListClient;
     private Node mWearNode;
@@ -134,6 +135,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
         mContext = this;
+        Log.d(TAG, "AWSdSevice Constructor result of context compare: " + mContext +
+                " and parentContext: " + parentContext + " result compare: " +
+                Objects.equals(mContext, parentContext));
+        if (mSdData == null) mSdData = new SdData();
         if (requestCreateNewChannelAndInit) {
             createNotificationChannel();
             prepareAndStartForeground();
@@ -197,6 +202,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public void prepareAndStartForeground() {
         try {
+            requestCreateNewChannelAndInit = false;
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
             builder.setContentTitle(String.valueOf(R.string.app_name));
             builder.setSmallIcon(R.drawable.icon_24x24);
@@ -268,13 +274,14 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.v(TAG, "Received new settings");
 
             try {
-
-                mSdData.fromJSON(s1);
-                mSdData.haveSettings = true;
-                mSdData.watchAppRunning = true;
-                mSdData.watchConnected = true;
-                mSdData.haveData = true;
-                mSampleFreq = mSdData.mSampleFreq;
+                if (!Objects.equals(s1, "Would you please give me your settings?".getBytes(StandardCharsets.UTF_8))) {
+                    mSdData.fromJSON(s1);
+                    mSdData.haveSettings = true;
+                    mSdData.watchAppRunning = true;
+                    mSdData.watchConnected = true;
+                    mSdData.haveData = true;
+                    mSampleFreq = mSdData.mSampleFreq;
+                } else sendMessage(MESSAGE_ITEM_OSD_DATA_REQUESTED, mSdData.toSettingsJSON());
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
@@ -398,8 +405,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
         if (mSdData.serverOK) bindSensorListeners();
 
 
-        mAccData = new double[NSAMP];
-        mSdData = new SdData();
+        //mAccData = new double[NSAMP];
+        // mSdData = new SdData();
 
         mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
@@ -438,7 +445,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
                                    public void run() {
                                        try {
                                            Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
-                                           if (mAccData == null) mAccData = new double[NSAMP];
                                            if (mNodeListClient instanceof List && !mSdData.serverOK) {
                                                Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
                                                List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
@@ -481,6 +487,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onBind()");
         intentFromOnBind=intent;
         try {
+            if (mSdData == null) mSdData = new SdData();
             createNotificationChannel();
             prepareAndStartForeground();
             Wearable.getCapabilityClient(mContext)
@@ -493,12 +500,14 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } catch (Exception e) {
                 Log.e(TAG,"onBind(): Error in reloading vars ",e);
         }
+        mBound = true;
         return mBinder;
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
+        mBound = false;
         notificationManager.notify(TAG, channelIDs.lastIndexOf(channelIDs), mNotification);
         return super.onUnbind(intent);
     }
@@ -525,7 +534,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onRebind(Intent intent) {
         super.onRebind(intent);
-        intentFromOnRebind=intent;
+        Log.v(TAG, "onRebind()");
+        intentFromOnRebind = intent;
         try {
             createNotificationChannel();
             prepareAndStartForeground();
@@ -536,7 +546,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     );
             Wearable.getMessageClient(mContext).addListener(this);
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
-            Log.v(TAG, "onRebind()");
+            mBound = true;
         } catch (Exception e) {
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
             ;
@@ -708,7 +718,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
 
         try {
-            sendDataToPhone();
+            sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
         } catch (Exception e) {
             Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
         }

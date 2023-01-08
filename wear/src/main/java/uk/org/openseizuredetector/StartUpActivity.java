@@ -7,6 +7,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Notification;
+import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -28,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.wear.ambient.AmbientModeSupport;
 
+import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -47,6 +49,7 @@ public class StartUpActivity extends AppCompatActivity
     private static Notification mNotificationBuilder;
     private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private AWSdService mAWSdService;
+    private Service aWSdService;
     private Intent mServiceIntent;
     private StringBuilder textViewBuilder;
 
@@ -277,7 +280,8 @@ public class StartUpActivity extends AppCompatActivity
     protected void onStop() {
         super.onStop();
         Log.v(TAG, "onStop()");
-        //if (mConnection != null) unbindService(mConnection);
+        if (mConnection != null)
+            if (mAWSdService != null) if (mAWSdService.mBound) unbindService(mConnection);
         mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 
@@ -285,9 +289,9 @@ public class StartUpActivity extends AppCompatActivity
 
     @Override
     protected void onDestroy() {
-        //stopService(new Intent(getBaseContext(), AWSdService.class));
         super.onDestroy();
-        if (mConnection != null) unbindService(mConnection);
+        if (mConnection != null)
+            if (mAWSdService != null) if (mAWSdService.mBound) unbindService(mConnection);
         mUiTimer.cancel();
     }
 
@@ -295,7 +299,8 @@ public class StartUpActivity extends AppCompatActivity
     protected void onPause() {
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
-        unbindService(mConnection);
+        if (mConnection != null)
+            if (mAWSdService != null) if (mAWSdService.mBound) unbindService(mConnection);
         mUiTimer.cancel();
     }
 
@@ -337,16 +342,19 @@ public class StartUpActivity extends AppCompatActivity
         @Override
         public void onEnterAmbient(Bundle ambientDetails) {
             // Handle entering ambient mode
+            Log.d(TAG, "onEnterAmbient();");
         }
 
         @Override
         public void onExitAmbient() {
             // Handle exiting ambient mode
+            Log.d(TAG, "onExitAmbient(): Exiting ambient mode");
         }
 
         @Override
         public void onUpdateAmbient() {
             // Update the content
+            Log.d(TAG, "onUpdateAmbient(): Updating ambient");
         }
     }
 
@@ -359,13 +367,19 @@ public class StartUpActivity extends AppCompatActivity
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             AWSdService.Access access = ((AWSdService.Access) iBinder);
             mAWSdService.parentConnection = new Connection(mContext);
-            mAWSdService = access.getService();
+            aWSdService = access.getService();
+            Log.d(TAG, "mAWSdService= : " + mAWSdService + " aWSdService = : " + aWSdService +
+                    " result in compare: " + Objects.equals(aWSdService, mAWSdService));
             Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
         }
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-            mAWSdService = null;
+            mAWSdService.onUnbind(mServiceIntent);
+
+            if (!isSdServiceRunning()) {
+                mAWSdService = null;
+            }
             Log.i(TAG, "onServiceDisconnected()" + componentName.toShortString());
         }
     }

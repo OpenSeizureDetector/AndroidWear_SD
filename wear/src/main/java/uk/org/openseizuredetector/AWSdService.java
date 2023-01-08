@@ -274,30 +274,30 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.v(TAG, "Received new settings");
 
             try {
-                if (!Objects.equals(s1, "Would you please give me your settings?".getBytes(StandardCharsets.UTF_8))) {
-                    mSdData.fromJSON(s1);
-                    mSdData.haveSettings = true;
-                    mSdData.watchAppRunning = true;
-                    mSdData.watchConnected = true;
-                    mSdData.haveData = true;
-                    mSampleFreq = mSdData.mSampleFreq;
-                } else sendMessage(MESSAGE_ITEM_OSD_DATA_REQUESTED, mSdData.toSettingsJSON());
+                mSdData.fromJSON(s1);
+                mSdData.haveSettings = true;
+                mSdData.watchAppRunning = true;
+                mSdData.watchConnected = true;
+                mSdData.haveData = true;
+                mSampleFreq = mSdData.mSampleFreq;
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_REQUESTED)) {
             try {
                 Log.v(TAG, "onMessageReived() : if receivedData ");
-                mSdData.fromJSON(s1);
-                mSdData.haveSettings = true;
-                mSdData.watchAppRunning = true;
-                mSdData.watchConnected = true;
-                mSdData.haveData = true;
+                if (!Objects.equals(s1, "Would you please give me your settings?".getBytes(StandardCharsets.UTF_8))) {
 
-                //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                // as broadcast to all client watches.
+                    mSdData.haveSettings = true;
+                    mSdData.watchAppRunning = true;
+                    mSdData.watchConnected = true;
+                    mSdData.haveData = true;
 
-                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                    //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                    // as broadcast to all client watches.
+
+                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                }
 
             } catch (Exception e) {
                 Log.e(TAG, "OnMessageReceived(): catch on Received new settings failed to process", e);

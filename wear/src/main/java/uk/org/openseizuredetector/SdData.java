@@ -31,6 +31,7 @@ import android.text.format.Time;
 import android.util.Log;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /* based on http://stackoverflow.com/questions/2139134/how-to-send-an-object-from-one-android-activity-to-another-using-intents */
@@ -248,8 +249,8 @@ public class SdData implements Parcelable {
     public String toSettingsJSON() {
         String retval;
         retval = "SdData.toSettingsJSON() Output";
+        JSONObject jsonObj = new JSONObject();
         try {
-            JSONObject jsonObj = new JSONObject();
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));
                 jsonObj.put("dataTimeStr", dataTime.format("%Y%m%dT%H%M%S"));
@@ -290,10 +291,19 @@ public class SdData implements Parcelable {
             retval = jsonObj.toString();
         } catch (Exception ex) {
             Log.e(TAG, "toSettingsJSON(): Error Creating Data Object - " + ex.toString());
-            retval = "Error Creating Data Object - " + ex.toString();
+
+            Log.v(TAG, "Error Creating Data Object - " + ex.toString());
+
+            try {
+                jsonObj.put("dataType", "ErrorType");
+
+                jsonObj.put("Exception", "Error Creating Data Object - " + ex.toString());
+            } catch (JSONException jsonException) {
+                Log.e(TAG, "toSettingsJSON() catched ex in JSON handling failed!", jsonException);
+                retval = jsonObj.toString();
+            }
+            return (retval);
         }
-        return (retval);
-    }
 
     public String toDataString(boolean includeRawData) {
         String retval;

@@ -234,7 +234,10 @@ public class StartUpActivity extends AppCompatActivity
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
             }
-            if (!mAWSdService.mSdData.serverOK) {
+            if (mAWSdService.mSdData != null) if (!mAWSdService.mSdData.serverOK) {
+                Log.e(TAG, "onStart(): no initialised server");
+                mAWSdService.requestCreateNewChannelAndInit = true;
+            } else {
                 Log.e(TAG, "onStart(): no initialised server");
                 mAWSdService.requestCreateNewChannelAndInit = true;
             }
@@ -248,14 +251,6 @@ public class StartUpActivity extends AppCompatActivity
         try {
             if (mContext == null) mContext = this;
             if (mAWSdService == null) mAWSdService = new AWSdService();
-            if (mAWSdService.appName == null)
-                mAWSdService.appName = getResources().getString(R.string.app_name);
-            else if (mAWSdService.appName.isEmpty())
-                mAWSdService.appName = getResources().getString(R.string.app_name);
-            if (mAWSdService.appDescription == null)
-                mAWSdService.appDescription = getResources().getString(R.string.hello_round);
-            else if (mAWSdService.appDescription.isEmpty())
-                mAWSdService.appDescription = getResources().getString(R.string.hello_round);
             if (mConnection == null) mConnection = new Connection(mContext);
             if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
 
@@ -267,7 +262,7 @@ public class StartUpActivity extends AppCompatActivity
                 mServiceIntent,
                 mConnection,
                 Context.BIND_AUTO_CREATE);
-        if (!mAWSdService.mSdData.serverOK) {
+        if (mAWSdService.mSdData != null) if (!mAWSdService.mSdData.serverOK) {
             Log.e(TAG, "onResume(): no initialised server");
             mAWSdService.requestCreateNewChannelAndInit = true;
         }
@@ -275,12 +270,15 @@ public class StartUpActivity extends AppCompatActivity
         //TODO: disable update after test
         mUiTimer.schedule(new UpdateUiTask(), 0, 500);
 
+
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         Log.v(TAG, "onStop()");
+        //if (mConnection != null) unbindService(mConnection);
+        mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 
     }
@@ -289,6 +287,8 @@ public class StartUpActivity extends AppCompatActivity
     protected void onDestroy() {
         //stopService(new Intent(getBaseContext(), AWSdService.class));
         super.onDestroy();
+        if (mConnection != null) unbindService(mConnection);
+        mUiTimer.cancel();
     }
 
     @Override
@@ -350,7 +350,7 @@ public class StartUpActivity extends AppCompatActivity
         }
     }
 
-    private class Connection implements ServiceConnection {
+    class Connection implements ServiceConnection {
         public Connection(Context context) {
             mContext = context;
         }

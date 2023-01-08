@@ -3,6 +3,7 @@ package uk.org.openseizuredetector;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -44,6 +45,8 @@ import org.jtransforms.fft.DoubleFFT_1D;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Timer;
@@ -64,6 +67,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private final String MESSAGE_ITEM_OSD_DATA_RECEIVED = "/data-received";
     private final String MESSAGE_ITEM_PATH = "/message-item";
     private final String APP_OPEN_WEARABLE_PAYLOAD_PATH = "/APP_OPEN_WEARABLE_PAYLOAD";
+    public boolean requestCreateNewChannelAndInit;
+    public StartUpActivity.Connection parentConnection;
     private Context mContext;
     private Boolean mMobileDeviceConnected = false;
     private final static int NSAMP = 250;
@@ -118,9 +123,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private MessageClient mApiClient;
     private PowerManager.WakeLock mWakeLock;
     private Intent notificationIntent = null;
-    NotificationChannel channel;
-    NotificationManager notificationManager;
-    NotificationCompat.Builder notificationCompatBuilder;
+    private NotificationChannel channel;
+    private NotificationManager notificationManager;
+    private NotificationCompat.Builder notificationCompatBuilder;
+    private Notification mNotification = null;
     private Intent intentFromOnStart;
     private Intent intentFromOnBind;
     private Intent intentFromOnRebind;
@@ -128,23 +134,29 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
         mContext = this;
-
-
-    }
-
-    private dataTime returnDateFromDouble(double valueToConvert){
-        dataTime returnResult = Calendar.getInstance().getTime();
-        try{
-            returnResult=(dataTime)valueToConvert;
-        }catch(Exception e)
-        {
-            Log.e(TAG,"returnDateFromDouble(): FAiled converting double To Date", e);
+        if (requestCreateNewChannelAndInit) {
+            createNotificationChannel();
+            prepareAndStartForeground();
+            mStartForegroundService(notificationIntent);
         }
+
+
     }
 
-    private double returnDoubleFromDate(dataTime valueToConvert){
-        return (double) valueToConvert;
+    private Date returnDateFromDouble(double valueToConvert) {
+        Date returnResult = Calendar.getInstance().getTime();
+        try {
+            returnResult.setTime((long) (valueToConvert * (60 * 60 * 24 * 1000)));
+        } catch (Exception e) {
+            Log.e(TAG, "returnDateFromDouble(): FAiled converting double To Date", e);
+        }
+        return returnResult;
     }
+
+    private double returnDoubleFromDate(Date valueToConvert) {
+        return ((double) valueToConvert.getTime() / (60 * 60 * 24 * 1000));
+    }
+
     private static final String returnNewCHANNEL_ID() {
         String currentID = String.valueOf(R.string.app_name) + channelIDs.size();
         channelIDs.add(channelIDs.size(), currentID);
@@ -200,7 +212,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
             builder.setContentText(String.valueOf(R.string.app_name));
             builder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.drawable.icon_24x24));
             returnNewCHANNEL_ID();
-            notificationManager.notify(channelIDs.size(), builder.build());
+            mNotification = builder.build();
+            notificationManager.notify(channelIDs.size(), mNotification);
         } catch (Exception e) {
             Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
         }
@@ -210,7 +223,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
-        super.onMessageReceived(messageEvent);
         if (mSdData == null) mSdData = new SdData();
         if (mSensorManager != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -291,7 +303,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public void onCapabilityChanged(CapabilityInfo capabilityInfo) {
-        super.onCapabilityChanged(capabilityInfo);
         Log.d(TAG, "CapabilityInfo received: " + capabilityInfo.toString());
         if (capabilityInfo.equals(Uri.parse("wear://"))) {
             mMobileNodesWithCompatibility = capabilityInfo;
@@ -469,7 +480,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public IBinder onBind(Intent intent) {
         Log.v(TAG, "onBind()");
         intentFromOnBind=intent;
-        super.onBind(intent);
         try {
             createNotificationChannel();
             prepareAndStartForeground();
@@ -489,7 +499,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
-
+        notificationManager.notify(TAG, channelIDs.lastIndexOf(channelIDs), mNotification);
         return super.onUnbind(intent);
     }
 
@@ -497,18 +507,19 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public void onDestroy() {
         super.onDestroy();
         Log.v(TAG, "onDestroy()");
-        mSensorManager.unregisterListener(this);
         try {
-            mSdData.watchConnected = false;
-            mSdData.watchAppRunning = false;
-            sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+            if (mSensorManager != null) mSensorManager.unregisterListener(this);
+            if (mSdData != null) {
+                mSdData.watchConnected = false;
+                mSdData.watchAppRunning = false;
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+            }
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
+            if (mWakeLock != null) if (mWakeLock.isHeld()) mWakeLock.release();
         } catch (Exception e) {
-
+            Log.e(TAG, "onDestroy(): error unregistering", e);
         }
-        mWakeLock.release();
-
     }
 
     @Override
@@ -592,7 +603,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onSensorChanged(SensorEvent event) {
         // is this a heartbeat event and does it have data?
-        super.onSensorChanged(event);
         if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
             int newValue = Math.round(event.values[0]);
             //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);

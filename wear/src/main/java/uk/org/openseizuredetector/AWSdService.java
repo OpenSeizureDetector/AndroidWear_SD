@@ -183,7 +183,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             notificationManager.createNotificationChannel(channel);
             if (!notificationManager.areNotificationsEnabled()) {
                 Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
-            }
+            } else Log.d(TAG, "createNotificationChannel(): notifications are enabled");
         }
     }
 
@@ -203,10 +203,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public void prepareAndStartForeground() {
         try {
             requestCreateNewChannelAndInit = false;
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(this);
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext);
             builder.setContentTitle(String.valueOf(R.string.app_name));
             builder.setSmallIcon(R.drawable.icon_24x24);
-            builder.setContentIntent(PendingIntent.getActivity(this, 0, new Intent(this, AWSdService.class), PendingIntent.FLAG_UPDATE_CURRENT));
+            builder.setContentIntent(PendingIntent.getActivity(mContext, 0, new Intent(this, AWSdService.class), PendingIntent.FLAG_UPDATE_CURRENT));
 
             NotificationCompat.WearableExtender extender = new NotificationCompat.WearableExtender();
             extender.setBackground(BitmapFactory.decodeResource(getResources(), R.drawable.card_background));

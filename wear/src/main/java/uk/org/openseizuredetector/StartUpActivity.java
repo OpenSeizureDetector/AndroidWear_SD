@@ -29,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.wear.ambient.AmbientModeSupport;
 
+import java.util.Calendar;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -405,9 +406,9 @@ public class StartUpActivity extends AppCompatActivity
                                         .append(" Connected: ")
                                         .append(mAWSdService.mSdData.serverOK)
                                         .append(" time: ")
-                                        .append(Calendar.getType())
+                                        .append(Calendar.getInstance().getTime())
                                         .append(" ❤️ ")
-                                        .append(mAWSdService.mSdData.hr)
+                                        .append(mAWSdService.mSdData.heartCur)
                                         .toString());
 
                             if (mAlarmText != null && mAWSdService.mSdData != null) {

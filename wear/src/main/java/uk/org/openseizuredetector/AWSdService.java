@@ -746,6 +746,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             DoubleFFT_1D fftDo = new DoubleFFT_1D(mNSamp);
             double[] fft = new double[mNSamp * 2];
             System.arraycopy(mAccData, 0, fft, 0, mNSamp);
+            System.arraycopy(mAccData, 0, mSdData.rawData, 0, mNSamp);
             fftDo.realForwardFull(fft);
 
             // Calculate the whole spectrum power (well a value equivalent to it that avoids suare root calculations

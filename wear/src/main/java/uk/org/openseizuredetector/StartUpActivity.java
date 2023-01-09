@@ -402,10 +402,13 @@ public class StartUpActivity extends AppCompatActivity
                             //Log.v(TAG, "UpdateUiTask() - " + mAWSdService.mNSamp);
                             if (mTextView != null)
                                 mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round))
-                                        .append(": mNsamp=")
-                                        .append(mAWSdService.mNSamp)
-                                        .append(" Status of server: ")
-                                        .append(mAWSdService.mSdData.serverOK).toString());
+                                        .append(" Connected: ")
+                                        .append(mAWSdService.mSdData.serverOK)
+                                        .append(" time: ")
+                                        .append(Calendar.getType())
+                                        .append(" ❤️ ")
+                                        .append(mAWSdService.mSdData.hr)
+                                        .toString());
 
                             if (mAlarmText != null && mAWSdService.mSdData != null) {
                                 if (mAWSdService.mSdData.alarmState == 2 || mAWSdService.mSdData.alarmState == 1) {

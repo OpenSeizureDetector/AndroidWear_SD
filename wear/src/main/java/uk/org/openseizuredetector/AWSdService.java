@@ -290,18 +290,17 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_REQUESTED)) {
             try {
                 Log.v(TAG, "onMessageReived() : if receivedData ");
-                if (!Objects.equals(s1, "Would you please give me your settings?".getBytes(StandardCharsets.UTF_8))) {
 
-                    mSdData.haveSettings = true;
-                    mSdData.watchAppRunning = true;
-                    mSdData.watchConnected = true;
-                    mSdData.haveData = true;
+                mSdData.haveSettings = true;
+                mSdData.watchAppRunning = true;
+                mSdData.watchConnected = true;
+                mSdData.haveData = true;
 
-                    //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                    // as broadcast to all client watches.
+                //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                // as broadcast to all client watches.
 
-                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                }
+                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+
 
             } catch (Exception e) {
                 Log.e(TAG, "OnMessageReceived(): catch on Received new settings failed to process", e);

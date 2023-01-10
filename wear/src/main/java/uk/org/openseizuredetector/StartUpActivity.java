@@ -83,6 +83,7 @@ public class StartUpActivity extends AppCompatActivity
                     Log.d(TAG, "ALREADY GRANTED");
                 }
             }
+            mServiceIntent.setAction(Constants.ACTION.STARTFOREGROUND_ACTION);
             Object result = bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
             Log.v(TAG, "OnCreate(): result of result(bindService) " + result);
             Log.v(TAG, "OnCreate(): result of mAWSdService: mSdData: " + mAWSdService.mSdData);

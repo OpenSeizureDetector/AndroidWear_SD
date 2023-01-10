@@ -1,6 +1,5 @@
 package uk.org.openseizuredetector;
 
-
 import static com.google.android.material.internal.ContextUtils.getActivity;
 
 import android.Manifest;
@@ -230,6 +229,7 @@ public class StartUpActivity extends AppCompatActivity
             if (mTextView != null)
                 mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": onStart").toString());
             try {
+                mServiceIntent.setAction(Constants.ACTION.STARTFOREGROUND_ACTION);
                 bindService(mServiceIntent, mConnection, Context.BIND_AUTO_CREATE);
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Bound to AWSdService").toString());
@@ -282,7 +282,12 @@ public class StartUpActivity extends AppCompatActivity
         super.onStop();
         Log.v(TAG, "onStop()");
         if (mConnection != null)
-            if (mAWSdService != null) if (mAWSdService.mBound) unbindService(mConnection);
+            if (mAWSdService != null) if (mAWSdService.mBound) {
+                unbindService(mConnection);
+                Intent stopIntent = new Intent(mContext, AWSdService.class);
+                stopIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
+                startService(stopIntent);
+            }
         mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 

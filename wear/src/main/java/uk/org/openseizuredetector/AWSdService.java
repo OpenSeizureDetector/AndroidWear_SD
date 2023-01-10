@@ -134,6 +134,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private Intent intentFromOnBind;
     private Intent intentFromOnRebind;
 
+
     public AWSdService() {
         Log.v(TAG, "AWSdService Constructor()");
         mContext = this;
@@ -221,7 +222,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             builder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.drawable.icon_24x24));
             returnNewCHANNEL_ID();
             mNotification = builder.build();
-            notificationManager.notify(channelIDs.size(), mNotification);
+            notificationManager.notify(Constants.NOTIFICATION_ID.FOREGROUND_SERVICE, mNotification);
         } catch (Exception e) {
             Log.e(TAG, "prepareAndStartForeground(): Failed.", e);
         }
@@ -277,6 +278,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
             try {
                 mSdData.fromJSON(s1);
+                mNodeFullName = mSdData.phoneName;
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
@@ -379,105 +381,115 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        intentFromOnStart=intent;
-        Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}" );
-        int returnFromSuper=super.onStartCommand(intent,flags,startId);
+        intentFromOnStart = intent;
+        Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
+        int returnFromSuper = super.onStartCommand(intent, flags, startId);
         mContext = this;
-        try {
+        if (intent.getAction().equals(Constants.ACTION.STARTFOREGROUND_ACTION)) {
+            Log.i(TAG, "Received Start Foreground Intent ");
+            // your start service code
+            try {
 
-            if (mSdData == null) mSdData = new SdData();
-            //if (mTextView != null) mTextView.setText("Service Started");
-            //if (mTextView != null) mTextView.setText("onStart");
+                if (mSdData == null) mSdData = new SdData();
+                //if (mTextView != null) mTextView.setText("Service Started");
+                //if (mTextView != null) mTextView.setText("onStart");
 
-            createNotificationChannel();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                prepareAndStartForeground();
+                createNotificationChannel();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    prepareAndStartForeground();
+                }
+                // If the notification supports a direct reply action, use
+                // PendingIntent.FLAG_MUTABLE instead.
+
+            } catch (Exception e) {
+                Log.e(TAG, " OnCreate - Starting Service failed", e);
             }
-            // If the notification supports a direct reply action, use
-            // PendingIntent.FLAG_MUTABLE instead.
+            Log.v(TAG, "onStartCommand() - populating mNodeList");
+            mNodeListClient = Wearable.getNodeClient(mContext);
 
-        } catch (Exception e) {
-            Log.e(TAG, " OnCreate - Starting Service failed", e);
-        }
-        Log.v(TAG, "onStartCommand() - populating mNodeList");
-        mNodeListClient = Wearable.getNodeClient(mContext);
+            Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
 
-        Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
-
-        if (mSdData.serverOK) bindSensorListeners();
+            if (mSdData.serverOK) bindSensorListeners();
 
 
-        //mAccData = new double[NSAMP];
-        // mSdData = new SdData();
+            //mAccData = new double[NSAMP];
+            // mSdData = new SdData();
 
-        mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
 
-        // Prevent sleeping
-        PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
-        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
+            // Prevent sleeping
+            PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
+            mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
 
-        if (!mWakeLock.isHeld()) {
-            mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
-        }
-        try {
-            Wearable.getCapabilityClient(mContext)
-                    .addListener(
-                            this,
-                            Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                    );
-            Wearable.getMessageClient(mContext).addListener(this);
-            Log.v(TAG, "onRebind()");
-        } catch (Exception e) {
-            Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
-            ;
-        }
-        // Initialise the Google API Client so we can use Android Wear messages.
-        try {
-            if (mSdData.serverOK) {
-
-                sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+            if (!mWakeLock.isHeld()) {
+                mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "onStartCommand() ", e);
-        }//Eval cutting From Here Until End Function
-        Timer appStartTimer = new Timer();
-        appStartTimer.schedule(new TimerTask() {
-                                   @Override
-                                   public void run() {
-                                       try {
-                                           Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
-                                           if (mNodeListClient instanceof List && !mSdData.serverOK) {
-                                               Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
-                                               List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
-                                               if (connectedNodes.size() > 0) {
-                                                   for (Node node : connectedNodes) {
-                                                       Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
-                                                       mSdData.watchConnected = true;
-                                                       mSdData.watchAppRunning = true;
-                                                       sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                                                       //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                                                       // as broadcast to all client watches.
-                                                       mMobileNodeUri = node.getId();
-                                                       mNodeFullName = node.getDisplayName();
+            try {
+                Wearable.getCapabilityClient(mContext)
+                        .addListener(
+                                this,
+                                Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                        );
+                Wearable.getMessageClient(mContext).addListener(this);
+                Log.v(TAG, "onRebind()");
+            } catch (Exception e) {
+                Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+                ;
+            }
+            // Initialise the Google API Client so we can use Android Wear messages.
+            try {
+                if (mSdData.serverOK) {
+
+                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "onStartCommand() ", e);
+            }//Eval cutting From Here Until End Function
+            Timer appStartTimer = new Timer();
+            appStartTimer.schedule(new TimerTask() {
+                                       @Override
+                                       public void run() {
+                                           try {
+                                               Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
+                                               if (mNodeListClient instanceof List && !mSdData.serverOK) {
+                                                   Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
+                                                   List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
+                                                   if (connectedNodes.size() > 0) {
+                                                       for (Node node : connectedNodes) {
+                                                           Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
+                                                           mSdData.watchConnected = true;
+                                                           mSdData.watchAppRunning = true;
+                                                           sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                                                           //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                                                           // as broadcast to all client watches.
+                                                           mMobileNodeUri = node.getId();
+                                                           mNodeFullName = node.getDisplayName();
+                                                       }
+                                                   } else {
+                                                       Log.e(TAG, "TimerTask/Run() :  no nodes found");
                                                    }
-                                               } else {
-                                                   Log.e(TAG, "TimerTask/Run() :  no nodes found");
+                                                   //try shift
+
+
                                                }
-                                               //try shift 
-
-
+                                           } catch (Exception e) {
+                                               Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
                                            }
-                                       } catch (Exception e) {
-                                           Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
+
                                        }
 
                                    }
+                    , 5000); //end timerTask
 
-                               }
-                , 5000); //end timerTask
+            if (intent == null) return START_NOT_STICKY;
+        } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION)) {
+            Log.i(TAG, "Received Stop Foreground Intent");
+            //your end servce code
+            stopForeground(true);
+            stopSelfResult(startId);
+        }
 
-        if (intent == null) return START_NOT_STICKY;
         return returnFromSuper;
     }
 

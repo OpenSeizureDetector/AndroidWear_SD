@@ -758,6 +758,19 @@ public class AWSdService extends Service implements SensorEventListener, Message
     }
 
     /**
+     * Calculate the magnitude of entry i in the fft array fft
+     *
+     * @param fft
+     * @param i
+     * @return magnitude ( Re*Re + Im*Im )
+     */
+    private double getMagnitude(final double[] fft, final int i) {
+        final double mag;
+        mag = fft[2 * i] * fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
+        return mag;
+    }
+
+    /**
      * doAnalysis() - analyse the data if the accelerometer data array mAccData
      * and populate the output data structure mSdData
      */

@@ -414,7 +414,9 @@ public class StartUpActivity extends AppCompatActivity
                                         .append(" time: ")
                                         .append(Calendar.getInstance().getTime())
                                         .append(" ❤️ ")
-                                        .append(mAWSdService.mSdData.heartCur)
+                                        .append(mAWSdService.mSdData.mHR)
+                                        .append(" batt% ")
+                                        .append(mAWSdService.mSdData.batteryPc)
                                         .toString());
 
                             if (mAlarmText != null && mAWSdService.mSdData != null) {

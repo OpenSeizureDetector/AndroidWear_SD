@@ -373,6 +373,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
+
         } catch (Exception e) {
             Log.e(TAG, "bindSensorListners(): Sensor declaration excepmted: ", e);
         }
@@ -564,8 +565,18 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
             ;
         }
-        
+
     }
+
+    public boolean isCharging() {
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = mContext.registerReceiver(null, ifilter);
+        int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean bCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL;
+        return bCharging;
+    }
+
 
     private void checkAlarm() {
         if (mSdData.alarmState == 6 || mSdData.alarmState == 10) {
@@ -590,7 +601,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.alarmState = 1;
             }
             long[] pattern = {0, 100, 200, 300};
-            mVibe.vibrate(pattern, -1);
+            if (!isCharging()) mVibe.vibrate(pattern, -1);
 
             //
         } else {
@@ -695,7 +706,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                             //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
                         }
                         mSdData.mNsamp /= 2;
-                        //doAnalysis(); do analysis on phone
+                        doAnalysis();
                         mSdData.mNsamp = 0;
                         mStartTs = event.timestamp;
                     } else if (mSdData.mNsamp > NSAMP) {
@@ -751,71 +762,92 @@ public class AWSdService extends Service implements SensorEventListener, Message
      * and populate the output data structure mSdData
      */
     private void doAnalysis() {
+        double nMin = 0d;
+        double nMax = 0d;
+        double nFreqCutoff = 0d;
+        double[] fft = null;
         try {
-
-            double freqRes = 1.0 * mSampleFreq / mNSamp;
-            Log.v(TAG, "doAnalysis(): mSampleFreq=" + mSampleFreq + " mNSamp=" + mNSamp + ": freqRes=" + freqRes);
+            // FIXME - Use specified sampleFreq, not this hard coded one
+            final int sampleFreq;
+            if (this.mSdData.mSampleFreq != 0) this.mSampleFreq = (short) this.mSdData.mSampleFreq;
+            else sampleFreq = (int) ((double) this.mSdData.mNsamp / this.mSdData.dT);
+            final double freqRes = 1.0d * this.mSampleFreq / ((double) this.mSdData.mNsamp);
+            Log.v(this.TAG, "doAnalysis(): mSampleFreq=" + this.mSampleFreq + " mNSamp=" + this.mSdData.mNsamp + ": freqRes=" + freqRes);
             // Set the frequency bounds for the analysis in fft output bin numbers.
-            double nMin = mAlarmFreqMin / freqRes;
-            double nMax = mAlarmFreqMax / freqRes;
-            Log.v(TAG, "doAnalysis(): mAlarmFreqMin=" + mAlarmFreqMin + ", nMin=" + nMin
-                    + ", mAlarmFreqMax=" + mAlarmFreqMax + ", nMax=" + nMax);
+            nMin = this.mAlarmFreqMin / freqRes;
+            nMax = this.mAlarmFreqMax / freqRes;
+            Log.v(this.TAG, "doAnalysis(): mAlarmFreqMin=" + this.mAlarmFreqMin + ", nMin=" + nMin
+                    + ", mAlarmFreqMax=" + this.mAlarmFreqMax + ", nMax=" + nMax);
             // Calculate the bin number of the cutoff frequency
-            double nFreqCutoff = mFreqCutoff / freqRes;
-            Log.v(TAG, "mFreqCutoff = " + mFreqCutoff + ", nFreqCutoff=" + nFreqCutoff);
+            final short mFreqCutoff = 12;
+            nFreqCutoff = (double) mFreqCutoff / freqRes;
+            Log.v(this.TAG, "mFreqCutoff = " + ((short) mFreqCutoff) + ", nFreqCutoff=" + nFreqCutoff);
 
-            DoubleFFT_1D fftDo = new DoubleFFT_1D(mNSamp);
-            double[] fft = new double[mNSamp * 2];
-            System.arraycopy(mAccData, 0, fft, 0, mNSamp);
-            System.arraycopy(mAccData, 0, mSdData.rawData, 0, mNSamp);
-            fftDo.realForwardFull(fft);
+            final DoubleFFT_1D fftDo = new DoubleFFT_1D(this.mSdData.mNsamp);
+            fft = new double[this.mSdData.mNsamp * 2];
+            ///System.arraycopy(mAccData, 0, fft, 0, mNsamp);
+            System.arraycopy(this.mSdData.rawData, 0, fft, 0, this.mSdData.mNsamp);
+            fftDo.realForward(fft);
 
-            // Calculate the whole spectrum power (well a value equivalent to it that avoids suare root calculations
+            // Calculate the whole spectrum power (well a value equivalent to it that avoids square root calculations
             // and zero any readings that are above the frequency cutoff.
             double specPower = 0;
-            for (int i = 1; i < mNSamp / 2; i++) {
-                if (i <= nFreqCutoff) {
-                    specPower = specPower + fft[2 * i] + fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
-
-                } else {
+            for (int i = 1; i < this.mSdData.mNsamp / 2; i++)
+                if (i <= nFreqCutoff) specPower = specPower + this.getMagnitude(fft, i);
+                else {
                     fft[2 * i] = 0.;
                     fft[2 * i + 1] = 0.;
                 }
-            }
-            specPower = specPower / mNSamp / 2;
+            //Log.v(TAG,"specPower = "+specPower);
+            //specPower = specPower/(mSdData.mNsamp/2);
+            specPower = specPower / this.mSdData.mNsamp / 2;
+            //Log.v(TAG,"specPower = "+specPower);
 
             // Calculate the Region of Interest power and power ratio.
-            double roiPower = 0d;
-            for (int i = (int) nMin; i < nMax; i++) {
-                roiPower = roiPower + fft[2 * i] + fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
-            }
+            double roiPower = 0;
+            for (int i = (int) Math.floor(nMin); i < (int) Math.ceil(nMax); i++)
+                roiPower = roiPower + this.getMagnitude(fft, i);
             roiPower = roiPower / (nMax - nMin);
-            double roiRatio = 10 * roiPower / specPower;
+            final double roiRatio = 10 * roiPower / specPower;
 
             // Calculate the simplified spectrum - power in 1Hz bins.
-            double[] simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
+            // Values for SD_MODE
+            final int SIMPLE_SPEC_FMAX = 10;
+            final double[] simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
             for (int ifreq = 0; ifreq < SIMPLE_SPEC_FMAX; ifreq++) {
-                double binMin = 1.0 + ifreq / freqRes;    // add 1 to loose dc component
-                double binMax = 1.0 + (ifreq + 1.0) / freqRes;
+                final int binMin = (int) (1 + ifreq / freqRes);    // add 1 to loose dc component
+                final int binMax = (int) (1 + (ifreq + 1) / freqRes);
                 simpleSpec[ifreq] = 0;
-                for (int i = (int) binMin; i < binMax; i++) {
-                    simpleSpec[ifreq] = simpleSpec[ifreq] + fft[2 * i] + fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
-                }
+                for (int i = binMin; i < binMax; i++)
+                    simpleSpec[ifreq] = simpleSpec[ifreq] + this.getMagnitude(fft, i);
                 simpleSpec[ifreq] = simpleSpec[ifreq] / (binMax - binMin);
-
-                // Populate the mSdData structure to communicate with the main SdServer service.
-                mSdData.specPower = (long) specPower;
-                mSdData.roiPower = (long) roiPower;
-                mSdData.roiRatio = (long) roiRatio;
-
-            }
-            for (int i = 0; i < SIMPLE_SPEC_FMAX; i++) {
-                mSdData.simpleSpec[i] = (int) simpleSpec[i];
             }
 
+            // Populate the mSdData structure to communicate with the main SdServer service.
+            if (this.mSdData.dataTime == null) this.mSdData.dataTime = new Time();
+            this.mSdData.dataTime.setToNow();
+            // Amount by which to reduce analysis results to scale to be comparable to analysis on Pebble.
+            final int ACCEL_SCALE_FACTOR = 1000;
+            this.mSdData.specPower = (long) specPower / ACCEL_SCALE_FACTOR;
+            this.mSdData.roiPower = (long) roiPower / ACCEL_SCALE_FACTOR;
+            this.mSdData.dataTime.setToNow();
+            this.mSdData.maxVal = 0;   // not used
+            this.mSdData.maxFreq = 0;  // not used
+            this.mSdData.haveData = true;
+            this.mSdData.alarmThresh = this.mAlarmThresh;
+            this.mSdData.alarmRatioThresh = this.mAlarmRatioThresh;
+            this.mSdData.alarmFreqMin = this.mAlarmFreqMin;
+            this.mSdData.alarmFreqMax = this.mAlarmFreqMax;
+            // note mSdData.batteryPc is set from settings data in updateFromJSON()
+            // FIXME - I haven't worked out why dividing by 1000 seems necessary to get the graph on scale - we don't seem to do that with the Pebble.
+            for (int i = 0; i < SIMPLE_SPEC_FMAX; i++)
+                this.mSdData.simpleSpec[i] = (int) simpleSpec[i] / ACCEL_SCALE_FACTOR;
+            Log.v(this.TAG, "simpleSpec = " + Arrays.toString(this.mSdData.simpleSpec));
 
-        } catch (Exception e) {
-            Log.e(TAG, "Failed Analysis internally: ", e);
+
+        } catch (final Exception e) {
+            Log.e(this.TAG, "doAnalysis - Exception during Analysis", e);
+
         }
     }
 

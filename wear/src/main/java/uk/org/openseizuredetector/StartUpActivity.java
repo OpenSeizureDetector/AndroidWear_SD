@@ -285,9 +285,6 @@ public class StartUpActivity extends AppCompatActivity
         if (mConnection != null)
             if (mAWSdService != null) if (mAWSdService.mBound) {
                 unbindService(mConnection);
-                Intent stopIntent = new Intent(mContext, AWSdService.class);
-                stopIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
-                startService(stopIntent);
             }
         mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
@@ -298,7 +295,13 @@ public class StartUpActivity extends AppCompatActivity
     protected void onDestroy() {
         super.onDestroy();
         if (mConnection != null)
-            if (mAWSdService != null) if (mAWSdService.mBound) unbindService(mConnection);
+            if (mAWSdService != null) if (mAWSdService.mBound) {
+                unbindService(mConnection);
+                Intent stopIntent = new Intent(mContext, AWSdService.class);
+                stopIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
+                startService(stopIntent);
+            }
+
         mUiTimer.cancel();
     }
 

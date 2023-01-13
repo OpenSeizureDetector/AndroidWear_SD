@@ -63,6 +63,12 @@ public class SdData implements Parcelable {
     public double heartAvg;
     public double heartCur;
     public long batteryPc;
+    private JSONArray arr;
+    private JSONArray rawArr;
+    private JSONArray raw3DArr;
+    private JSONObject jo;
+    private JSONObject jsonObj;
+    private JSONArray specArr;
 
     /* Heart Rate Alarm Settings */
     public boolean mHRAlarmActive = false;
@@ -109,7 +115,6 @@ public class SdData implements Parcelable {
     public double mO2Sat = 0d;
 
     public boolean mO2SatAlarmStanding = false;
-    public boolean mO2SatFaultStanding = false;
     public String mDataType;
     public String phoneName = "";
     int mNsamp = 0;
@@ -131,7 +136,7 @@ public class SdData implements Parcelable {
     public boolean fromJSON(String jsonStr) {
         Log.v(TAG, "fromJSON() - parsing jsonString - " + jsonStr);
         try {
-            JSONObject jo = new JSONObject(jsonStr);
+            jo = new JSONObject(jsonStr);
             Log.v(TAG, "fromJSON(): jo = " + jo.toString());
             Log.v(TAG, "fromJSON(): dataTimeStr=" + jo.optString("dataTimeStr"));
             //Calendar cal = Calendar.getInstance();
@@ -155,24 +160,28 @@ public class SdData implements Parcelable {
             alarmRatioThresh = jo.optInt("alarmRatioThresh");
             mHRAlarmActive = jo.optBoolean("hrAlarmActive");
             mHRAlarmStanding = jo.optBoolean("hrAlarmStanding");
-            mHRThreshMax = (short) jo.optInt("hrThreshMax");
-            mHRThreshMin = (short) jo.optInt("hrThreshMin");
+            mHRThreshMax = jo.optDouble("hrThreshMax");
+            mHRThreshMin = jo.optDouble("hrThreshMin");
             mDataType = jo.optString("dataType", "raw");
             phoneName = jo.optString("phoneName");
             mHR = (short) jo.optInt("hr");
-            if (mHR >= 0.0) {
-                mHRAlarmActive = true;
-            }
-            JSONArray specArr = jo.optJSONArray("simpleSpec");
+            /*
+                 if (mHR >= 0.0) {
+                    mHRAlarmActive = true;
+                }
+            */
+            specArr = jo.optJSONArray("simpleSpec");
             for (int i = 0; i < specArr.length(); i++) {
                 simpleSpec[i] = specArr.optInt(i);
             }
             haveData = true;
             Log.v(TAG, "fromJSON(): sdData = " + this.toString());
+            specArr = null;
             return true;
         } catch (Exception e) {
             Log.e(TAG, "fromJSON() - error parsing result", e);
             haveData = false;
+            specArr = null;
             return false;
         }
     }
@@ -215,32 +224,32 @@ public class SdData implements Parcelable {
             jsonObj.put("sdVersion", watchSdVersion);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchPartNo", watchPartNo);
-            JSONArray arr = new JSONArray();
+            arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
             }
 
             jsonObj.put("simpleSpec", arr);
-            JSONArray rawArr = new JSONArray();
+            rawArr = new JSONArray();
             for (int i = 0; i < rawData.length; i++) {
                 rawArr.put(rawData[i]);
             }
             //Log.v(TAG,"rawData[0]="+rawData[0]+", rawArr[0]="+rawArr.getDouble(0));
             jsonObj.put("rawData", rawArr);
-
-            JSONArray raw3DArr = new JSONArray();
+            raw3DArr = new JSONArray();
             for (int i = 0; i < rawData3D.length; i++) {
                 raw3DArr.put(rawData3D[i]);
             }
             jsonObj.put("rawData3D", raw3DArr);
-
             retval = jsonObj.toString();
             Log.v(TAG, "retval rawData=" + retval);
         } catch (Exception ex) {
             Log.v(TAG, "Error Creating Data Object - " + ex.toString());
             retval = "Error Creating Data Object - " + ex.toString();
         }
-
+        arr = null;
+        rawArr = null;
+        raw3DArr = null;
         return (retval);
     }
 
@@ -248,7 +257,7 @@ public class SdData implements Parcelable {
     public String toSettingsJSON() {
         String retval;
         retval = "SdData.toSettingsJSON() Output";
-        JSONObject jsonObj = new JSONObject();
+        jsonObj = new JSONObject();
         try {
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));
@@ -302,6 +311,7 @@ public class SdData implements Parcelable {
             }
             retval = jsonObj.toString();
         }
+        jsonObj = null;
         return (retval);
     }
 
@@ -312,7 +322,7 @@ public class SdData implements Parcelable {
 
             //if (! includeRawData) mDataType = "data"; datatype set before usage of toDataString
             // at the end of toDataString if includeRawData: set to raw.
-            JSONObject jsonObj = new JSONObject();
+            jsonObj = new JSONObject();
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));
                 jsonObj.put("dataTimeStr", dataTime.format("%Y%m%dT%H%M%S"));
@@ -362,18 +372,16 @@ public class SdData implements Parcelable {
             jsonObj.put("simpleSpec", arr);
             if (includeRawData) {
                 mDataType = "raw";
-                JSONArray rawArr = new JSONArray();
+                rawArr = new JSONArray();
                 for (int i = 0; i < rawData.length; i++) {
                     rawArr.put(rawData[i]);
                 }
                 jsonObj.put("rawData", rawArr);
-                rawArr = null;
-                JSONArray raw3DArr = new JSONArray();
+                raw3DArr = new JSONArray();
                 for (int i = 0; i < rawData3D.length; i++) {
                     raw3DArr.put(rawData3D[i]);
                 }
                 jsonObj.put("rawData3D", raw3DArr);
-                raw3DArr = null;
 
             }
             jsonObj.put("dataType", mDataType);
@@ -383,6 +391,10 @@ public class SdData implements Parcelable {
             Log.e(TAG, "Error Creating Data Object - " + ex.toString(), ex);
             retval = "Error Creating Data Object - " + ex.toString();
         }
+        jsonObj = null;
+        arr = null;
+        rawArr = null;
+        raw3DArr = null;
 
         return (retval);
     }

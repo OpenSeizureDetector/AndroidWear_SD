@@ -103,7 +103,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private int mAlarmThresh = 900000;
     private int mAlarmRatioThresh = 275;
     private int mAlarmTime = 3;
-    private float mHeartPercentThresh = 1.3f;
+    private double mHeartPercentThresh = 1.3;
     private int alarmCount = 0;
     private int curHeart = 0;
     private int avgHeart = 0;
@@ -178,7 +178,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             CharSequence name = getString(R.string.app_name);
             String description = getString(R.string.app_name);
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            channel = new NotificationChannel(returnNewCHANNEL_ID(), name, importance);
+            channel = new NotificationChannel("Default notification", name, importance);
             channel.setDescription(description);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
@@ -220,7 +220,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
             builder.setPriority(NotificationCompat.PRIORITY_LOW);
             builder.setContentText(String.valueOf(R.string.app_name));
             builder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.drawable.icon_24x24));
-            returnNewCHANNEL_ID();
             mNotification = builder.build();
             notificationManager.notify(Constants.NOTIFICATION_ID.FOREGROUND_SERVICE, mNotification);
         } catch (Exception e) {
@@ -579,7 +578,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
 
     private void checkAlarm() {
-        if (mSdData.alarmState == 6 || mSdData.alarmState == 10) {
+        if (mSdData.alarmState == 6 || mSdData.alarmState == 10 || isCharging()) {
             //ignore alarms when muted
             return;
         }
@@ -587,11 +586,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
         if (mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh) {
             inAlarm = true;
         }
-        if (mSdData.heartAvg != 0 && ((float) mSdData.heartCur) > ((float) mSdData.heartAvg) * mHeartPercentThresh) {
+        if (mSdData.mHRAlarmActive && mSdData.heartAvg != 0d && mSdData.heartCur > mSdData.heartAvg * mHeartPercentThresh) {
             inAlarm = true;
             alarmCount = (int) mSdData.alarmTime;
         }
-        Log.v(TAG, "roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
+        Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
 
         if (inAlarm) {
             alarmCount += 1;
@@ -601,7 +600,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.alarmState = 1;
             }
             long[] pattern = {0, 100, 200, 300};
-            if (!isCharging()) mVibe.vibrate(pattern, -1);
+            mVibe.vibrate(pattern, -1);
 
             //
         } else {
@@ -750,7 +749,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
 
         try {
-            sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+            if (mSdData.mNsamp > 0 && mMode == 1)
+                sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
         } catch (Exception e) {
             Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
         }
@@ -769,7 +769,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         mag = fft[2 * i] * fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
         return mag;
     }
-
     /**
      * doAnalysis() - analyse the data if the accelerometer data array mAccData
      * and populate the output data structure mSdData

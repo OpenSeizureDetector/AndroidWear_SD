@@ -195,6 +195,7 @@ public class SdData implements Parcelable {
         return toDataString(includeRawData);
     }
 
+
     public String toDatapointJSON() {
         String retval;
         retval = "SdData.toDatapointJSON() Output";

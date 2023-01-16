@@ -24,7 +24,9 @@ import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Vibrator;
 import android.text.format.Time;
@@ -91,11 +93,20 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
     public double[] mAccData;
+    // Notification ID
+    private final int NOTIFICATION_ID = 1;
+    private final int EVENT_NOTIFICATION_ID = 2;
+    private final int DATASHARE_NOTIFICATION_ID = 3;
     public SdData mSdData;
     // private Sensor mO2Sensor; disabled until privileged API Samsung is acquired
     private int mHeartMode = 0;   // 0=check data rate, 1=running
     private MessageEvent mMessageEvent = null;
     private String mMobileNodeUri = null;
+    private final IBinder mBinder = new SdBinder();
+    private double[] fft;
+    private DoubleFFT_1D fftDo;
+    private double[] simpleSpec;
+    private CharSequence mNotChName = "OSD Notification Channel";
 
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
@@ -114,7 +125,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
     private double dT;
     Vibrator mVibe;
-    private IBinder mBinder = null;
+    private String mEventNotChId = "OSD Event Notification Channel";
 
     public boolean mBound = false;
     private String mNodeFullName;
@@ -133,6 +144,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private Intent intentFromOnStart;
     private Intent intentFromOnBind;
     private Intent intentFromOnRebind;
+    private NotificationManager mNM;
+    private NotificationCompat.Builder mNotificationBuilder;
+    private Handler mHandler;
+    private OsdUtil mUtil;
 
 
     public AWSdService() {
@@ -149,6 +164,67 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
 
 
+    }
+
+
+    /**
+     * onCreate() - called when services is created.  Starts message
+     * handler process to listen for messages from other processes.
+     */
+    @Override
+    public void onCreate() {
+        Log.i(TAG, "onCreate()");
+        mHandler = new Handler(Looper.getMainLooper());
+        mSdData = new SdData();
+        mContext = this;
+        mUtil = new OsdUtil(getApplicationContext(), mHandler);
+
+    }
+
+    /**
+     * Show a notification while this service is running.
+     */
+    private void showNotification(int alarmLevel) {
+        Log.v(TAG, "showNotification() - alarmLevel=" + alarmLevel);
+        int iconId;
+        String titleStr;
+        Uri soundUri = null;
+
+        iconId = R.drawable.star_of_life_24x24;
+        titleStr = "OK";
+        //       if (mAudibleWarning)
+        //         soundUri = Uri.parse("android.resource://" + getPackageName() + "/raw/warning");
+
+
+        Intent i = new Intent(getApplicationContext(), StartUpActivity.class);
+        i.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        int Flag_Intend;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Flag_Intend = PendingIntent.FLAG_IMMUTABLE;
+        } else {
+            Flag_Intend = PendingIntent.FLAG_UPDATE_CURRENT;
+        }
+        PendingIntent contentIntent =
+                PendingIntent.getActivity(this,
+                        0, i, Flag_Intend);
+        String smsStr = " TEST ";
+
+
+        if (mNotificationBuilder != null) {
+            mNotification = mNotificationBuilder.setContentIntent(contentIntent)
+                    .setSmallIcon(iconId)
+                    .setColor(0x00ffffff)
+                    .setAutoCancel(false)
+                    .setContentTitle(titleStr)
+                    .setContentText(smsStr)
+                    .setOnlyAlertOnce(true)
+                    .build();
+
+            mNM.notify(NOTIFICATION_ID, mNotification);
+        } else {
+            Log.i(TAG, "showNotification() - notification builder is null, so not showing notification.");
+        }
     }
 
     private Date returnDateFromDouble(double valueToConvert) {
@@ -384,112 +460,151 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
         int returnFromSuper = super.onStartCommand(intent, flags, startId);
         mContext = this;
-        if (intent.getAction().equals(Constants.ACTION.STARTFOREGROUND_ACTION)) {
-            Log.i(TAG, "Received Start Foreground Intent ");
-            // your start service code
-            try {
 
-                if (mSdData == null) mSdData = new SdData();
-                //if (mTextView != null) mTextView.setText("Service Started");
-                //if (mTextView != null) mTextView.setText("onStart");
+        if (intent == null) return START_NOT_STICKY;
+        if (intent.getData() != null) {
+            if (Objects.equals(intent.getData(), Uri.parse("Start"))) {
+                Log.i(TAG, "Received Start Foreground Intent ");
+                // your start service code
+                try {
 
-                createNotificationChannel();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    prepareAndStartForeground();
+                    if (mSdData == null) mSdData = new SdData();
+                    //if (mTextView != null) mTextView.setText("Service Started");
+                    //if (mTextView != null) mTextView.setText("onStart");
+
+                    // Initialise Notification channel for API level 26 and over
+                    // from https://stackoverflow.com/questions/44443690/notificationcompat-with-api-26
+                    mNM = (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
+                    String mNotChId = "OSD Notification Channel";
+                    mNotificationBuilder = new NotificationCompat.Builder(this, mNotChId);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        NotificationChannel channel = new NotificationChannel(mNotChId,
+                                mNotChName,
+                                NotificationManager.IMPORTANCE_DEFAULT);
+                        String mNotChDesc = "OSD Notification Channel Description";
+                        channel.setDescription(mNotChDesc);
+                        mNM.createNotificationChannel(channel);
+                    }
+
+                    Log.d(TAG, "onStartCommand(): logging before call startForeground");
+                    // Display a notification icon in the status bar of the phone to
+                    // show the service is running.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Log.v(TAG, "showing Notification and calling startForeground (Android 8 and higher)");
+                        if (mNM.areNotificationsEnabled()) showNotification(0);
+                        startForeground(NOTIFICATION_ID, mNotification);
+                    } else {
+                        Log.v(TAG, "showing Notification");
+                        if (mNM.areNotificationsEnabled()) showNotification(0);
+                    }
+                    // If the notification supports a direct reply action, use
+                    // PendingIntent.FLAG_MUTABLE instead.
+
+                } catch (Exception e) {
+                    Log.e(TAG, " OnCreate - Starting Service failed", e);
                 }
-                // If the notification supports a direct reply action, use
-                // PendingIntent.FLAG_MUTABLE instead.
+                Log.v(TAG, "onStartCommand() - populating mNodeList");
+                mNodeListClient = Wearable.getNodeClient(mContext);
 
-            } catch (Exception e) {
-                Log.e(TAG, " OnCreate - Starting Service failed", e);
-            }
-            Log.v(TAG, "onStartCommand() - populating mNodeList");
-            mNodeListClient = Wearable.getNodeClient(mContext);
+                Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
 
-            Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
-
-            if (mSdData.serverOK) bindSensorListeners();
+                if (mSdData.serverOK) bindSensorListeners();
 
 
-            //mAccData = new double[NSAMP];
-            // mSdData = new SdData();
+                //mAccData = new double[NSAMP];
+                // mSdData = new SdData();
 
-            mVibe = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                mVibe = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
 
 
-            // Prevent sleeping
-            PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
-            mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
+                // Prevent sleeping
+                PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
+                mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
 
-            if (!mWakeLock.isHeld()) {
-                mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
-            }
-            try {
-                Wearable.getCapabilityClient(mContext)
-                        .addListener(
-                                this,
-                                Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                        );
-                Wearable.getMessageClient(mContext).addListener(this);
-                Log.v(TAG, "onRebind()");
-            } catch (Exception e) {
-                Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
-                ;
-            }
-            // Initialise the Google API Client so we can use Android Wear messages.
-            try {
-                if (mSdData.serverOK) {
-
-                    sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                if (!mWakeLock.isHeld()) {
+                    mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "onStartCommand() ", e);
-            }//Eval cutting From Here Until End Function
-            Timer appStartTimer = new Timer();
-            appStartTimer.schedule(new TimerTask() {
-                                       @Override
-                                       public void run() {
-                                           try {
-                                               Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
-                                               if (mNodeListClient instanceof List && !mSdData.serverOK) {
-                                                   Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
-                                                   List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
-                                                   if (connectedNodes.size() > 0) {
-                                                       for (Node node : connectedNodes) {
-                                                           Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
-                                                           mSdData.watchConnected = true;
-                                                           mSdData.watchAppRunning = true;
-                                                           sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                                                           //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                                                           // as broadcast to all client watches.
-                                                           mMobileNodeUri = node.getId();
-                                                           mNodeFullName = node.getDisplayName();
+                try {
+                    Wearable.getCapabilityClient(mContext)
+                            .addListener(
+                                    this,
+                                    Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                            );
+                    Wearable.getMessageClient(mContext).addListener(this);
+                    Log.v(TAG, "onRebind()");
+                } catch (Exception e) {
+                    Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+                    ;
+                }
+                // Initialise the Google API Client so we can use Android Wear messages.
+                try {
+                    if (mSdData.serverOK) {
+
+                        sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "onStartCommand() ", e);
+                }//Eval cutting From Here Until End Function
+                Timer appStartTimer = new Timer();
+                appStartTimer.schedule(new TimerTask() {
+                                           @Override
+                                           public void run() {
+                                               try {
+                                                   Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
+                                                   if (mNodeListClient instanceof List && !mSdData.serverOK) {
+                                                       Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
+                                                       List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
+                                                       if (connectedNodes.size() > 0) {
+                                                           for (Node node : connectedNodes) {
+                                                               Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
+                                                               mSdData.watchConnected = true;
+                                                               mSdData.watchAppRunning = true;
+                                                               mSdData.mDataType = "watchConnect";
+                                                               mMobileNodeUri = node.getId();
+                                                               mNodeFullName = node.getDisplayName();
+                                                               sendMessage(MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                                                               //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                                                               // as broadcast to all client watches.
+                                                           }
+                                                       } else {
+                                                           Log.e(TAG, "TimerTask/Run() :  no nodes found");
                                                        }
-                                                   } else {
-                                                       Log.e(TAG, "TimerTask/Run() :  no nodes found");
+                                                       //try shift
+
+
                                                    }
-                                                   //try shift
-
-
+                                               } catch (Exception e) {
+                                                   Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
                                                }
-                                           } catch (Exception e) {
-                                               Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
+
                                            }
 
                                        }
+                        , 5000); //end timerTask
 
-                                   }
-                    , 5000); //end timerTask
 
-            if (intent == null) return START_NOT_STICKY;
+            }
         } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION)) {
             Log.i(TAG, "Received Stop Foreground Intent");
             //your end servce code
             stopForeground(true);
             stopSelfResult(startId);
         }
-
         return returnFromSuper;
+    }
+
+    /**
+     * Calculate the magnitude of entry i in the fft array fft
+     *
+     * @param fft
+     * @param i
+     * @return magnitude ( Re*Re + Im*Im )
+     */
+    private double getMagnitude(final double[] fft, final int i) {
+        double mag;
+        mag = fft[2 * i] * fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
+        //Log.d(TAG,"getMagnitude(): returning magnitude of: " + mag);
+        return mag;
     }
 
     private void requestPermissions(String[] strings, int i) {
@@ -498,11 +613,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public IBinder onBind(Intent intent) {
         Log.v(TAG, "onBind()");
-        intentFromOnBind=intent;
+        intentFromOnBind = intent;
         try {
             if (mSdData == null) mSdData = new SdData();
-            createNotificationChannel();
-            prepareAndStartForeground();
             Wearable.getCapabilityClient(mContext)
                     .addListener(
                             this,
@@ -513,7 +626,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } catch (Exception e) {
                 Log.e(TAG,"onBind(): Error in reloading vars ",e);
         }
-        mBound = true;
         return mBinder;
     }
 
@@ -758,18 +870,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
     }
 
     /**
-     * Calculate the magnitude of entry i in the fft array fft
-     *
-     * @param fft
-     * @param i
-     * @return magnitude ( Re*Re + Im*Im )
-     */
-    private double getMagnitude(final double[] fft, final int i) {
-        final double mag;
-        mag = fft[2 * i] * fft[2 * i] + fft[2 * i + 1] * fft[2 * i + 1];
-        return mag;
-    }
-    /**
      * doAnalysis() - analyse the data if the accelerometer data array mAccData
      * and populate the output data structure mSdData
      */
@@ -777,7 +877,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
         double nMin = 0d;
         double nMax = 0d;
         double nFreqCutoff = 0d;
-        double[] fft = null;
+        fft = null;
+        fftDo = null;
+        simpleSpec = null;
         try {
             // FIXME - Use specified sampleFreq, not this hard coded one
             final int sampleFreq;
@@ -795,7 +897,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             nFreqCutoff = (double) mFreqCutoff / freqRes;
             Log.v(this.TAG, "mFreqCutoff = " + ((short) mFreqCutoff) + ", nFreqCutoff=" + nFreqCutoff);
 
-            final DoubleFFT_1D fftDo = new DoubleFFT_1D(this.mSdData.mNsamp);
+            fftDo = new DoubleFFT_1D(this.mSdData.mNsamp);
             fft = new double[this.mSdData.mNsamp * 2];
             ///System.arraycopy(mAccData, 0, fft, 0, mNsamp);
             System.arraycopy(this.mSdData.rawData, 0, fft, 0, this.mSdData.mNsamp);
@@ -825,7 +927,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             // Calculate the simplified spectrum - power in 1Hz bins.
             // Values for SD_MODE
             final int SIMPLE_SPEC_FMAX = 10;
-            final double[] simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
+            simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
             for (int ifreq = 0; ifreq < SIMPLE_SPEC_FMAX; ifreq++) {
                 final int binMin = (int) (1 + ifreq / freqRes);    // add 1 to loose dc component
                 final int binMax = (int) (1 + (ifreq + 1) / freqRes);
@@ -860,6 +962,16 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } catch (final Exception e) {
             Log.e(this.TAG, "doAnalysis - Exception during Analysis", e);
 
+        }
+    }
+
+    /**
+     * class to handle binding the MainApp activity to this service
+     * so it can access mSdData.
+     */
+    public class SdBinder extends Binder {
+        AWSdService getService() {
+            return AWSdService.this;
         }
     }
 

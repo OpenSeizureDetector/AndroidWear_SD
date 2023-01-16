@@ -413,7 +413,7 @@ public class StartUpActivity extends AppCompatActivity
                                         .append(" time: ")
                                         .append(Calendar.getInstance().getTime())
                                         .append(" ❤️ ")
-                                        .append(mConnection.mAWSdService.mSdData.mHR)
+                                        .append((short) mConnection.mAWSdService.mSdData.heartCur)
                                         .append(" batt% ")
                                         .append(mConnection.mAWSdService.mSdData.batteryPc)
                                         .toString());

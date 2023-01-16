@@ -702,7 +702,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             inAlarm = true;
             alarmCount = (int) mSdData.alarmTime;
         }
-        Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
+        //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
 
         if (inAlarm) {
             alarmCount += 1;
@@ -748,124 +748,125 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onSensorChanged(SensorEvent event) {
         // is this a heartbeat event and does it have data?
-        if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
-            int newValue = Math.round(event.values[0]);
-            //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
-            // only do something if the value differs from the value before and the value is not 0.
-            if (curHeart != newValue && newValue != 0) {
-                // save the new value
-                curHeart = newValue;
-                // add it to the list and computer a new average
-                if (heartRates.size() == 10) {
-                    heartRates.remove(0);
+        if (!isCharging()) {
+            if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
+                int newValue = Math.round(event.values[0]);
+                //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+                // only do something if the value differs from the value before and the value is not 0.
+                if (curHeart != newValue && newValue != 0) {
+                    // save the new value
+                    curHeart = newValue;
+                    // add it to the list and computer a new average
+                    if (heartRates.size() == 10) {
+                        heartRates.remove(0);
+                    }
+                    heartRates.add(curHeart);
                 }
-                heartRates.add(curHeart);
-            }
-            avgHeart = (int) calculateAverage(heartRates);
-            if (heartRates.size() < 4) {
-                avgHeart = 0;
-            }
-        } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
-            if (mMode == 0) {
-                if (mStartEvent == null) {
-                    Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
-                    Log.v(TAG, "onSensorChanged(): saving initial event data");
-                    mStartEvent = event;
-                    mStartTs = event.timestamp;
-                    mSdData.mNsamp = 0;
-                } else {
-                    mSdData.mNsamp++;
+                avgHeart = (int) calculateAverage(heartRates);
+                if (heartRates.size() < 4) {
+                    avgHeart = 0;
                 }
-                if (mSdData.mNsamp >= 250) {
-                    Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                    double dT = 1e-9 * (event.timestamp - mStartTs);
-                    mSdData.mSampleFreq = (int) (mSdData.mNsamp / dT);
-                    mSdData.haveSettings = true;
-                    Log.v(TAG, "onSensorChanged(): Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
-                    mMode = 1;
-                    mSdData.mNsamp = 0;
-                    mStartTs = event.timestamp;
-                }
-            } else if (mMode == 1) {
-                // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
-                float x = event.values[0];
-                float y = event.values[1];
-                float z = event.values[2];
-                //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                if (!Objects.equals(mSdData.rawData, null) && mSdData.rawData.length > 0 && mSdData.rawData3D.length > 0) {
-                    mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
-                    mSdData.rawData3D[3 * mSdData.mNsamp] = x;
-                    mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
-                    mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
-                    mSdData.mNsamp++;
-                    if (mSdData.mNsamp == NSAMP) {
-                        // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                        // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                        // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                        // FIXME - we should do some sort of check and disregard samples with long delays in them.
+            } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
+                if (mMode == 0) {
+                    if (mStartEvent == null) {
+                        Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
+                        Log.v(TAG, "onSensorChanged(): saving initial event data");
+                        mStartEvent = event;
+                        mStartTs = event.timestamp;
+                        mSdData.mNsamp = 0;
+                    } else {
+                        mSdData.mNsamp++;
+                    }
+                    if (mSdData.mNsamp >= 250) {
+                        Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
                         double dT = 1e-9 * (event.timestamp - mStartTs);
-                        int sampleFreq = (int) (mSdData.mNsamp / dT);
-                        Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
-                        // DownSample from the 50Hz received frequency to 25Hz and convert to mg.
-                        // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
-                        for (int i = 0; i < mSdData.mNsamp; i++) {
-                            mSdData.rawData[i / 2] = 1000. * mSdData.rawData[i] / 9.81;
-                            mSdData.rawData3D[i / 2] = 1000. * mSdData.rawData3D[i] / 9.81;
-                            mSdData.rawData3D[i / 2 + 1] = 1000. * mSdData.rawData3D[i + 1] / 9.81;
-                            mSdData.rawData3D[i / 2 + 2] = 1000. * mSdData.rawData3D[i + 2] / 9.81;
-                            //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
-                        }
-                        mSdData.mNsamp /= 2;
-                        doAnalysis();
+                        mSdData.mSampleFreq = (int) (mSdData.mNsamp / dT);
+                        mSdData.haveSettings = true;
+                        Log.v(TAG, "onSensorChanged(): Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
+                        mMode = 1;
                         mSdData.mNsamp = 0;
                         mStartTs = event.timestamp;
-                    } else if (mSdData.mNsamp > NSAMP) {
-                        Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
                     }
+                } else if (mMode == 1) {
+                    // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
+                    float x = event.values[0];
+                    float y = event.values[1];
+                    float z = event.values[2];
+                    //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
+                    if (!Objects.equals(mSdData.rawData, null) && mSdData.rawData.length > 0 && mSdData.rawData3D.length > 0) {
+                        mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
+                        mSdData.rawData3D[3 * mSdData.mNsamp] = x;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
+                        mSdData.mNsamp++;
+                        if (mSdData.mNsamp == NSAMP) {
+                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                            double dT = 1e-9 * (event.timestamp - mStartTs);
+                            int sampleFreq = (int) (mSdData.mNsamp / dT);
+                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+                            // DownSample from the 50Hz received frequency to 25Hz and convert to mg.
+                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
+                            for (int i = 0; i < mSdData.mNsamp; i++) {
+                                mSdData.rawData[i / 2] = 1000. * mSdData.rawData[i] / 9.81;
+                                mSdData.rawData3D[i / 2] = 1000. * mSdData.rawData3D[i] / 9.81;
+                                mSdData.rawData3D[i / 2 + 1] = 1000. * mSdData.rawData3D[i + 1] / 9.81;
+                                mSdData.rawData3D[i / 2 + 2] = 1000. * mSdData.rawData3D[i + 2] / 9.81;
+                                //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
+                            }
+                            mSdData.mNsamp /= 2;
+                            doAnalysis();
+                            try {
+                                if (mSdData == null) mSdData = new SdData();
+                                if (mSdData.dataTime == null) mSdData.dataTime = new Time();
+                                mSdData.dataTime.setToNow();
+                                //mSdData.maxVal =    // not used
+                                //mSdData.maxFreq = 0;  // not usedx
+                                mSdData.haveData = true;
+                                mSdData.haveSettings = true;
+                                mSdData.watchConnected = true;
+                                mSdData.alarmThresh = mAlarmThresh;
+                                mSdData.alarmRatioThresh = mAlarmRatioThresh;
+                                mSdData.alarmTime = mAlarmTime;
+                                mSdData.heartCur = curHeart;
+                                mSdData.heartAvg = avgHeart;
+                                IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                                Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
+                                int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                                int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                                float batteryPct = 100 * level / (float) scale;
+                                mSdData.batteryPc = (int) (batteryPct);
+                                checkAlarm();
+
+                            } catch (Exception e) {
+                                Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
+                            }
+
+                            try {
+                                sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                            } catch (Exception e) {
+                                Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
+                            }
+                            mSdData.mNsamp = 0;
+                            mStartTs = event.timestamp;
+                        } else if (mSdData.mNsamp > NSAMP) {
+                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
+                        }
+                    } else {
+                        Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                    }
+
                 } else {
-                    Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                    Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
                 }
 
             } else {
-                Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
+                Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
             }
-
-        } else {
-            Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
-        }
-        try {
-            if (mSdData == null) mSdData = new SdData();
-            if (mSdData.dataTime == null) mSdData.dataTime = new Time();
-            mSdData.dataTime.setToNow();
-            //mSdData.maxVal =    // not used
-            //mSdData.maxFreq = 0;  // not usedx
-            mSdData.haveData = true;
-            mSdData.haveSettings = true;
-            mSdData.watchConnected = true;
-            mSdData.alarmThresh = mAlarmThresh;
-            mSdData.alarmRatioThresh = mAlarmRatioThresh;
-            mSdData.alarmTime = mAlarmTime;
-            mSdData.heartCur = curHeart;
-            mSdData.heartAvg = avgHeart;
-            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-            Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
-            int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            float batteryPct = 100 * level / (float) scale;
-            mSdData.batteryPc = (int) (batteryPct);
-            checkAlarm();
-
-        } catch (Exception e) {
-            Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
-        }
-
-        try {
-            if (mSdData.mNsamp > 0 && mMode == 1)
-                sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-        } catch (Exception e) {
-            Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
-        }
+        } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
 
     }
 

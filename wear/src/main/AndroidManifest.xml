@@ -1,12 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="uk.org.openseizuredetector">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Check whether Health Connect is installed or not -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
 
     <uses-feature android:name="android.hardware.type.watch" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="androidx.health.permission.Vo2Max.READ" />
+    <uses-permission android:name="androidx.health.permission.RespiratoryRate.READ" />
+    <uses-permission android:name="androidx.health.permission.OxygenSaturation.READ" />
+    <uses-permission android:name="androidx.health.permission.HeartRate.READ" />
 
 
     <application
@@ -14,18 +23,23 @@
         android:icon="@drawable/icon_24x24"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault"
-        android:banner="@string/app_name">
-        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version" />
+        android:banner="@string/app_name"
+        android:theme="@style/Theme.AppCompat.NoActionBar">
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
         <meta-data
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
 
         <activity
-            android:name=".StartUpActivity">
+            android:name=".StartUpActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
@@ -36,6 +50,7 @@
 
         <activity
             android:name=".AWSdMainActivity"
+            android:exported="true"
             android:label="Main Activity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

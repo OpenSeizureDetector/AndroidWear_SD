@@ -93,6 +93,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
     public double[] mAccData;
+    private Intent batteryStatus;
     // Notification ID
     private final int NOTIFICATION_ID = 1;
     private final int EVENT_NOTIFICATION_ID = 2;
@@ -148,6 +149,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private NotificationCompat.Builder mNotificationBuilder;
     private Handler mHandler;
     private OsdUtil mUtil;
+    private boolean prefValHrAlarmActive;
 
 
     public AWSdService() {
@@ -156,11 +158,16 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.d(TAG, "AWSdSevice Constructor result of context compare: " + mContext +
                 " and parentContext: " + parentContext + " result compare: " +
                 Objects.equals(mContext, parentContext));
-        if (mSdData == null) mSdData = new SdData();
-        if (requestCreateNewChannelAndInit) {
-            createNotificationChannel();
-            prepareAndStartForeground();
-            mStartForegroundService(notificationIntent);
+        if (mSensorManager != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+                ArrayList<String> arrayList = new ArrayList<String>();
+                for (Sensor sensor : sensors) {
+                    arrayList.add(sensor.getName());
+                }
+
+                arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
+            }
         }
 
 
@@ -186,12 +193,33 @@ public class AWSdService extends Service implements SensorEventListener, Message
      */
     private void showNotification(int alarmLevel) {
         Log.v(TAG, "showNotification() - alarmLevel=" + alarmLevel);
-        int iconId;
+        int iconId = R.drawable.star_of_life_24x24;
+        ;
         String titleStr;
         Uri soundUri = null;
+        String smsStr;
 
-        iconId = R.drawable.star_of_life_24x24;
-        titleStr = "OK";
+
+        switch (alarmLevel) {
+            case 0:
+                //iconId = R.drawable.star_of_life_24x24;
+                titleStr = "OK";
+                smsStr = "OSD Active";
+                break;
+            case 1:
+                titleStr = "WARNING";
+                smsStr = "OSD Active: " + mSdData.heartCur + " bpm";
+            case 2:
+                titleStr = "ALARM";
+                smsStr = "OSD Active: " + mSdData.heartCur + " bpm";
+            case -1:
+                titleStr = "FAULT";
+                smsStr = "OSD Active: " + mSdData.heartCur + " bpm";
+            default:
+                titleStr = "OK";
+                smsStr = "OSD Active: " + mSdData.heartCur + " bpm";
+        }
+
         //       if (mAudibleWarning)
         //         soundUri = Uri.parse("android.resource://" + getPackageName() + "/raw/warning");
 
@@ -208,7 +236,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         PendingIntent contentIntent =
                 PendingIntent.getActivity(this,
                         0, i, Flag_Intend);
-        String smsStr = " TEST ";
 
 
         if (mNotificationBuilder != null) {
@@ -308,22 +335,11 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
         if (mSdData == null) mSdData = new SdData();
-        if (mSensorManager != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
-                ArrayList<String> arrayList = new ArrayList<String>();
-                for (Sensor sensor : sensors) {
-                    arrayList.add(sensor.getName());
-                }
-
-                arrayList.forEach((n) -> Log.d(TAG + "SensorTest", n));
-            }
-        }
         Log.v(TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
         mMobileNodeUri = messageEvent.getSourceNodeId();
-        final String s1 = Arrays.toString(messageEvent.getData());
+        final String s1 = new String(messageEvent.getData(), StandardCharsets.UTF_8);
         final String messageEventPath = messageEvent.getPath();
         Log.v(
                 TAG_MESSAGE_RECEIVED,
@@ -337,15 +353,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
         //Send back a message back to the source node
         //This acknowledges that the receiver activity is open
         if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, APP_OPEN_WEARABLE_PAYLOAD_PATH)) {
+
+            String input;
             try {
+                input = new String(messageEvent.getData());
                 // Set the data of the message to be the bytes of the Uri.
                 Log.v(TAG, "Sending return message: " + wearableAppCheckPayloadReturnACK);
-                sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
-                bindSensorListeners();
-                Log.d(TAG, "We returned from sending message.");
+                if (Objects.equals(input, wearableAppCheckPayload))
+                    sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
+                if (Objects.equals(input, wearableAppCheckPayloadReturnACK))
+                    bindSensorListeners();
+                Log.d(TAG, "!messageEventPath.isEmpty() && Objects.equals(messageEventPath, APP_OPEN_WEARABLE_PAYLOAD_PATH) We returned from sending message.");
+
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
+            input = null;
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_TEST_RECEIVED)) {
             //TODO
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, MESSAGE_ITEM_OSD_DATA_RECEIVED)) {
@@ -353,6 +376,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
             try {
                 mSdData.fromJSON(s1);
+                prefValHrAlarmActive = mSdData.mHRAlarmActive;
+
                 mNodeFullName = mSdData.phoneName;
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
@@ -468,7 +493,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 // your start service code
                 try {
 
-                    if (mSdData == null) mSdData = new SdData();
                     //if (mTextView != null) mTextView.setText("Service Started");
                     //if (mTextView != null) mTextView.setText("onStart");
 
@@ -584,7 +608,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
 
             }
-        } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION)) {
+        } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION) || intent.getData().equals(Uri.parse("Stop"))) {
             Log.i(TAG, "Received Stop Foreground Intent");
             //your end servce code
             stopForeground(true);
@@ -615,7 +639,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         Log.v(TAG, "onBind()");
         intentFromOnBind = intent;
         try {
-            if (mSdData == null) mSdData = new SdData();
             Wearable.getCapabilityClient(mContext)
                     .addListener(
                             this,
@@ -681,7 +704,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public boolean isCharging() {
         IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        Intent batteryStatus = mContext.registerReceiver(null, ifilter);
+        batteryStatus = mContext.registerReceiver(null, ifilter);
         int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
         boolean bCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL;
@@ -694,6 +717,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
             //ignore alarms when muted
             return;
         }
+        //temporary force true mHrAlarmActive
+        if (mSdData.heartCur > 0d)
+            mSdData.mHRAlarmActive = (mSdData.alarmState != 6 && mSdData.alarmState != 10);
+
         boolean inAlarm = false;
         if (mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh) {
             inAlarm = true;
@@ -704,7 +731,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
         }
         //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
 
+        showNotification((int) mSdData.alarmState);
         if (inAlarm) {
+            ;
             alarmCount += 1;
             if (alarmCount > mSdData.alarmTime) {
                 mSdData.alarmState = 2;

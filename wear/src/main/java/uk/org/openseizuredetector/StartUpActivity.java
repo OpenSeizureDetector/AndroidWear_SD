@@ -189,6 +189,7 @@ public class StartUpActivity extends AppCompatActivity
             if (mUtil.isServerRunning()) {
                 Log.i(TAG, "onStart() - server running - stopping it - isServerRunning=" + mUtil.isServerRunning());
                 mUtil.bindToServer(mContext, mConnection);
+                mConnection.mAWSdService.parentContext = mContext;
             } else {
                 Log.i(TAG, "onStart() - server not running - isServerRunning=" + mUtil.isServerRunning());
                 // Wait 0.1 second to give the server chance to shutdown in case we have just shut it down below, then start it
@@ -265,6 +266,9 @@ public class StartUpActivity extends AppCompatActivity
 
         if (!mUtil.isServerRunning()) {
             mUtil.startServer();
+        } else {
+            mUtil.bindToServer(mContext, mConnection);
+            mConnection.mAWSdService.parentContext = mContext;
         }
         mUiTimer = new Timer();
         //TODO: disable update after test
@@ -305,8 +309,10 @@ public class StartUpActivity extends AppCompatActivity
         Log.i(TAG, "onPause() - unbinding from service");
         if (mConnection != null)
             if (mConnection.mAWSdService != null)
-                if (mConnection.mAWSdService.mBound)
+                if (mConnection.mAWSdService.mBound) {
+                    mConnection.mAWSdService.parentContext = null;
                     mUtil.unbindFromServer(mContext, mConnection);
+                }
         mUiTimer.cancel();
     }
 

@@ -117,7 +117,9 @@ public class SdData implements Parcelable {
     public boolean mO2SatAlarmStanding = false;
     public String mDataType;
     public String phoneName = "";
-    int mNsamp = 0;
+    public int mNsamp = 0;
+    public int NSAMP = 0;
+    public int mNsampDefault = 250;
 
 
     public SdData() {

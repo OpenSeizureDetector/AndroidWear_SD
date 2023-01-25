@@ -10,6 +10,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -20,6 +21,8 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Binder;
@@ -31,6 +34,7 @@ import android.os.PowerManager;
 import android.os.Vibrator;
 import android.text.format.Time;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -58,7 +62,7 @@ import java.util.TimerTask;
 
 public class AWSdService extends Service implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
 
-    private final static String TAG = "AWSdService";
+    private final static String TAG = Constants.TAGS.AWSDService;
     private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private final String wearableAppCheckPayload = "AppOpenWearable";
     private final String wearableAppCheckPayloadReturnACK = "AppOpenWearableACK";
@@ -76,7 +80,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public Context parentContext;
     private Context mContext;
     private Boolean mMobileDeviceConnected = false;
-    private final static int NSAMP = 250;
+    private static int NSAMP = 0;
     private final static int SIMPLE_SPEC_FMAX = 10;   // simple spectrum maximum freq in Hz.
     private SensorManager mSensorManager;
     private Sensor mSensor;
@@ -93,7 +97,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
     public double[] mAccData;
-    private Intent batteryStatus;
+    private Intent batteryStatusIntent;
     // Notification ID
     private final int NOTIFICATION_ID = 1;
     private final int EVENT_NOTIFICATION_ID = 2;
@@ -108,6 +112,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private DoubleFFT_1D fftDo;
     private double[] simpleSpec;
     private CharSequence mNotChName = "OSD Notification Channel";
+    private float sampleTime;
+    private float sampleDiff;
+    private float defaultSampleTime = 10f;
+
 
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
     private int mAlarmFreqMax = 8;  // Frequency ROI in Hz
@@ -119,6 +127,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private int alarmCount = 0;
     private int curHeart = 0;
     private int avgHeart = 0;
+    private float batteryPct = -1f;
     private ArrayList<Integer> heartRates = new ArrayList<Integer>(10);
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;
@@ -150,6 +159,38 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private Handler mHandler;
     private OsdUtil mUtil;
     private boolean prefValHrAlarmActive;
+    private boolean mNetworkConnected = false;
+    public BroadcastReceiver connectionUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent.getAction().equals("com.journaldev.broadcastreceiver.SOME_ACTION"))
+                Toast.makeText(mContext, "SOME_ACTION is received", Toast.LENGTH_LONG).show();
+
+            else if (intent.getAction().equals("android.net.conn.CONNECTIVITY_CHANGE")) {
+                ConnectivityManager cm =
+                        (ConnectivityManager) mContext.getSystemService(mContext.CONNECTIVITY_SERVICE);
+
+                NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+                mNetworkConnected = activeNetwork != null &&
+                        activeNetwork.isConnectedOrConnecting();
+                if (mNetworkConnected) {
+                    try {
+                        Toast.makeText(mContext, "Network is connected", Toast.LENGTH_LONG).show();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    Toast.makeText(mContext, "Network is changed or reconnected", Toast.LENGTH_LONG).show();
+                }
+            }
+        }
+    };
+    private int mChargingState = 0;
+    private boolean mIsCharging = false;
+    private int chargePlug = 0;
+    private boolean usbCharge = false;
+    private boolean acCharge = false;
+    private boolean sensorsActive = false;
 
 
     public AWSdService() {
@@ -173,20 +214,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     }
 
-
-    /**
-     * onCreate() - called when services is created.  Starts message
-     * handler process to listen for messages from other processes.
-     */
-    @Override
-    public void onCreate() {
-        Log.i(TAG, "onCreate()");
-        mHandler = new Handler(Looper.getMainLooper());
-        mSdData = new SdData();
-        mContext = this;
-        mUtil = new OsdUtil(getApplicationContext(), mHandler);
-
-    }
+    private IntentFilter batteryStatusIntentFilter = null;
 
     /**
      * Show a notification while this service is running.
@@ -253,6 +281,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.i(TAG, "showNotification() - notification builder is null, so not showing notification.");
         }
     }
+
 
     private Date returnDateFromDouble(double valueToConvert) {
         Date returnResult = Calendar.getInstance().getTime();
@@ -443,6 +472,20 @@ public class AWSdService extends Service implements SensorEventListener, Message
         alarmCount = 0;
     }
 
+    /**
+     * onCreate() - called when services is created.  Starts message
+     * handler process to listen for messages from other processes.
+     */
+    @Override
+    public void onCreate() {
+        Log.i(TAG, "onCreate()");
+        super.onCreate();
+        mHandler = new Handler(Looper.getMainLooper());
+        mSdData = new SdData();
+        mContext = this;
+        mUtil = new OsdUtil(getApplicationContext(), mHandler);
+
+    }
 
     public void bindSensorListeners() {
         try {
@@ -462,9 +505,17 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     Log.d(TAG, "ALREADY GRANTED");
                 }
             }
+            // num samples == fixed final 250 (NSAMP)
+            // time seconds in default == 10 (SIMPLE_SPEC_FMAX)
+            // count samples / time = 25 samples / second == 25 Hz max.
+            // 1 Hz == 1 /s
+            // 25 Hz == 0,04s
+            // 1s == 1.000.000 us (sample interval)
+            // sampleTime = 40.000 uS == (SampleTime (s) * 1000)
+            int sampleTimeAccelerationData = (int) (1000f * (NSAMP / SIMPLE_SPEC_FMAX));
             mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_GAME);
+            mSensorManager.registerListener(this, mSensor, sampleTimeAccelerationData);
             mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
             mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
             mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
@@ -473,10 +524,98 @@ public class AWSdService extends Service implements SensorEventListener, Message
             mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
-
+            sensorsActive = true;
+            if (batteryStatusIntent == null) {
+                bindBatteryEvents();
+            }
         } catch (Exception e) {
             Log.e(TAG, "bindSensorListners(): Sensor declaration excepmted: ", e);
         }
+    }
+
+    private void unBindSensorListeners() {
+        mSensorManager.unregisterListener(this);
+        sensorsActive = false;
+    }
+
+    protected void powerUpdateReceiveAction(Intent intent) {
+        try {
+            if (intent.getAction() != null) {
+                Log.d(TAG, "onReceive(): Received action:  " + intent.getAction());
+                // Are we charging / charged?
+                if (
+                        intent.getAction().equals(Intent.ACTION_POWER_CONNECTED) ||
+                                intent.getAction().equals(Intent.ACTION_POWER_DISCONNECTED)) {
+                    mChargingState = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                    mIsCharging = mChargingState == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            mChargingState == BatteryManager.BATTERY_STATUS_FULL;
+
+                    // How are we charging?
+                    chargePlug = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+                    usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
+                    acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
+
+                    if (mIsCharging && sensorsActive)
+                        unBindSensorListeners();
+                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive)
+                        bindSensorListeners();
+
+                }
+                if (intent.getAction().equals(Intent.ACTION_BATTERY_CHANGED)) {
+                    int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                    int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                    batteryPct = 100 * level / (float) scale;
+                    mSdData.batteryPc = (int) (batteryPct);
+
+                    mChargingState = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                    mIsCharging = mChargingState == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            mChargingState == BatteryManager.BATTERY_STATUS_FULL;
+
+                    // How are we charging?
+                    chargePlug = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+                    usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
+                    acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
+                    boolean wirelessCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_WIRELESS;
+                    if (mIsCharging && sensorsActive)
+                        unBindSensorListeners();
+                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive)
+                        bindSensorListeners();
+                }
+                if (intent.getAction().equals(Intent.ACTION_BATTERY_LOW) ||
+                        intent.getAction().equals(Intent.ACTION_BATTERY_OKAY)) {
+
+                    if (sensorsActive && batteryPct < 15f)
+                        unBindSensorListeners();
+                }
+                mUtil.runOnUiThread(() -> {
+                    Log.d(TAG, "onBatteryChanged(): runOnUiThread(): updateUI");
+                });
+
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "powerUpdateReceiveAction() : error in type", e);
+        }
+
+    }
+
+    public BroadcastReceiver powerUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            powerUpdateReceiveAction(intent);
+        }
+
+    };
+
+    private void bindBatteryEvents() {
+        batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_LOW));
+        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
+        batteryStatusIntent = registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
+        registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
+
     }
 
     @Override
@@ -484,6 +623,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         intentFromOnStart = intent;
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
         int returnFromSuper = super.onStartCommand(intent, flags, startId);
+        if (batteryStatusIntent == null) bindBatteryEvents();
         mContext = this;
 
         if (intent == null) return START_NOT_STICKY;
@@ -532,7 +672,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
                 Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
 
-                if (mSdData.serverOK) bindSensorListeners();
+                if (mSdData.serverOK && !sensorsActive) bindSensorListeners();
 
 
                 //mAccData = new double[NSAMP];
@@ -611,10 +751,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
         } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION) || intent.getData().equals(Uri.parse("Stop"))) {
             Log.i(TAG, "Received Stop Foreground Intent");
             //your end servce code
+            unBindSensorListeners();
+            unregisterReceiver(powerUpdateReceiver);
+            unregisterReceiver(connectionUpdateReceiver);
             stopForeground(true);
             stopSelfResult(startId);
         }
         return returnFromSuper;
+    }
+
+    public boolean isCharging() {
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent lIbatteryStatus = mContext.registerReceiver(null, ifilter);
+        int status = lIbatteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean bCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL;
+        return bCharging;
     }
 
     /**
@@ -702,13 +854,132 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     }
 
-    public boolean isCharging() {
-        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        batteryStatus = mContext.registerReceiver(null, ifilter);
-        int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-        boolean bCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL;
-        return bCharging;
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        // is this a heartbeat event and does it have data?
+        if (!isCharging() || mIsCharging) {
+            if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
+                int newValue = Math.round(event.values[0]);
+                //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+                // only do something if the value differs from the value before and the value is not 0.
+                if (curHeart != newValue && newValue != 0) {
+                    // save the new value
+                    curHeart = newValue;
+                    // add it to the list and computer a new average
+                    if (heartRates.size() == 10) {
+                        heartRates.remove(0);
+                    }
+                    heartRates.add(curHeart);
+                }
+                avgHeart = (int) calculateAverage(heartRates);
+                if (heartRates.size() < 4) {
+                    avgHeart = 0;
+                }
+            } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
+                if (mMode == 0) {
+                    if (mStartEvent == null) {
+                        Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
+                        Log.v(TAG, "onSensorChanged(): saving initial event data");
+                        mStartEvent = event;
+                        mStartTs = event.timestamp;
+                        mSdData.mNsamp = 0;
+                    } else {
+                        mSdData.mNsamp++;
+                    }
+                    if (mSdData.mNsamp >= NSAMP) {
+                        Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
+                        double dT = 1e-9 * (event.timestamp - mStartTs);
+                        mSdData.mSampleFreq = (int) (mSdData.mNsamp / dT);
+                        mSdData.haveSettings = true;
+                        Log.v(TAG, "onSensorChanged(): Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
+                        mMode = 1;
+                        mSdData.mNsamp = 0;
+                        mStartTs = event.timestamp;
+                    }
+                } else if (mMode == 1) {
+                    // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
+                    float x = event.values[0];
+                    float y = event.values[1];
+                    float z = event.values[2];
+                    //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
+                    if (!Objects.equals(mSdData.rawData, null) && mSdData.rawData.length > 0 && mSdData.rawData3D.length > 0) {
+                        mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
+                        mSdData.rawData3D[3 * mSdData.mNsamp] = x;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
+                        mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
+                        mSdData.mNsamp++;
+                        if (mSdData.mNsamp == NSAMP) {
+                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                            double dT = 1e-9 * (event.timestamp - mStartTs);
+                            int sampleFreq = (int) (mSdData.mNsamp / dT);
+                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+                            // DownSample from the 50Hz received frequency to 25Hz and convert to mg.
+                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
+                            for (int i = 0; i < mSdData.mNsamp; i++) {
+                                mSdData.rawData[i / 2] = 1000. * mSdData.rawData[i] / 9.81;
+                                mSdData.rawData3D[i / 2] = 1000. * mSdData.rawData3D[i] / 9.81;
+                                mSdData.rawData3D[i / 2 + 1] = 1000. * mSdData.rawData3D[i + 1] / 9.81;
+                                mSdData.rawData3D[i / 2 + 2] = 1000. * mSdData.rawData3D[i + 2] / 9.81;
+                                //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
+                            }
+                            mSdData.mNsamp /= 2;
+                            doAnalysis();
+                            try {
+                                if (mSdData == null) mSdData = new SdData();
+                                if (mSdData.dataTime == null) mSdData.dataTime = new Time();
+                                mSdData.dataTime.setToNow();
+                                //mSdData.maxVal =    // not used
+                                //mSdData.maxFreq = 0;  // not usedx
+                                mSdData.haveData = true;
+                                mSdData.haveSettings = true;
+                                mSdData.watchConnected = true;
+                                mSdData.alarmThresh = mAlarmThresh;
+                                mSdData.alarmRatioThresh = mAlarmRatioThresh;
+                                mSdData.alarmTime = mAlarmTime;
+                                mSdData.heartCur = curHeart;
+                                mSdData.heartAvg = avgHeart;
+                                /*IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+                                Intent batteryStatusIntent = getApplicationContext().registerReceiver(null, ifilter);
+                                */
+                                if (batteryPct == 0d && batteryStatusIntent != null) {
+                                    int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                                    int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                                    batteryPct = 100 * level / (float) scale;
+                                    mSdData.batteryPc = (int) (batteryPct);
+                                }
+                                checkAlarm();
+
+                            } catch (Exception e) {
+                                Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
+                            }
+
+                            try {
+                                sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                            } catch (Exception e) {
+                                Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
+                            }
+                            mSdData.mNsamp = 0;
+                            mStartTs = event.timestamp;
+                        } else if (mSdData.mNsamp > NSAMP) {
+                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
+                        }
+                    } else {
+                        Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                    }
+
+                } else {
+                    Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
+                }
+
+            } else {
+                Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
+            }
+        } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
+
     }
 
 
@@ -774,130 +1045,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
         return sum;
     }
 
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        // is this a heartbeat event and does it have data?
-        if (!isCharging()) {
-            if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
-                int newValue = Math.round(event.values[0]);
-                //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
-                // only do something if the value differs from the value before and the value is not 0.
-                if (curHeart != newValue && newValue != 0) {
-                    // save the new value
-                    curHeart = newValue;
-                    // add it to the list and computer a new average
-                    if (heartRates.size() == 10) {
-                        heartRates.remove(0);
-                    }
-                    heartRates.add(curHeart);
-                }
-                avgHeart = (int) calculateAverage(heartRates);
-                if (heartRates.size() < 4) {
-                    avgHeart = 0;
-                }
-            } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-                // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
-                if (mMode == 0) {
-                    if (mStartEvent == null) {
-                        Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
-                        Log.v(TAG, "onSensorChanged(): saving initial event data");
-                        mStartEvent = event;
-                        mStartTs = event.timestamp;
-                        mSdData.mNsamp = 0;
-                    } else {
-                        mSdData.mNsamp++;
-                    }
-                    if (mSdData.mNsamp >= 250) {
-                        Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                        double dT = 1e-9 * (event.timestamp - mStartTs);
-                        mSdData.mSampleFreq = (int) (mSdData.mNsamp / dT);
-                        mSdData.haveSettings = true;
-                        Log.v(TAG, "onSensorChanged(): Collected data for " + dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
-                        mMode = 1;
-                        mSdData.mNsamp = 0;
-                        mStartTs = event.timestamp;
-                    }
-                } else if (mMode == 1) {
-                    // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
-                    float x = event.values[0];
-                    float y = event.values[1];
-                    float z = event.values[2];
-                    //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                    if (!Objects.equals(mSdData.rawData, null) && mSdData.rawData.length > 0 && mSdData.rawData3D.length > 0) {
-                        mSdData.rawData[mSdData.mNsamp] = sqrt(x * x + y * y + z * z);
-                        mSdData.rawData3D[3 * mSdData.mNsamp] = x;
-                        mSdData.rawData3D[3 * mSdData.mNsamp + 1] = y;
-                        mSdData.rawData3D[3 * mSdData.mNsamp + 2] = z;
-                        mSdData.mNsamp++;
-                        if (mSdData.mNsamp == NSAMP) {
-                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
-                            double dT = 1e-9 * (event.timestamp - mStartTs);
-                            int sampleFreq = (int) (mSdData.mNsamp / dT);
-                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + dT + " sec (=" + sampleFreq + " Hz) - analysing...");
-                            // DownSample from the 50Hz received frequency to 25Hz and convert to mg.
-                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
-                            for (int i = 0; i < mSdData.mNsamp; i++) {
-                                mSdData.rawData[i / 2] = 1000. * mSdData.rawData[i] / 9.81;
-                                mSdData.rawData3D[i / 2] = 1000. * mSdData.rawData3D[i] / 9.81;
-                                mSdData.rawData3D[i / 2 + 1] = 1000. * mSdData.rawData3D[i + 1] / 9.81;
-                                mSdData.rawData3D[i / 2 + 2] = 1000. * mSdData.rawData3D[i + 2] / 9.81;
-                                //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
-                            }
-                            mSdData.mNsamp /= 2;
-                            doAnalysis();
-                            try {
-                                if (mSdData == null) mSdData = new SdData();
-                                if (mSdData.dataTime == null) mSdData.dataTime = new Time();
-                                mSdData.dataTime.setToNow();
-                                //mSdData.maxVal =    // not used
-                                //mSdData.maxFreq = 0;  // not usedx
-                                mSdData.haveData = true;
-                                mSdData.haveSettings = true;
-                                mSdData.watchConnected = true;
-                                mSdData.alarmThresh = mAlarmThresh;
-                                mSdData.alarmRatioThresh = mAlarmRatioThresh;
-                                mSdData.alarmTime = mAlarmTime;
-                                mSdData.heartCur = curHeart;
-                                mSdData.heartAvg = avgHeart;
-                                IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-                                Intent batteryStatus = getApplicationContext().registerReceiver(null, ifilter);
-                                int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-                                int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-                                float batteryPct = 100 * level / (float) scale;
-                                mSdData.batteryPc = (int) (batteryPct);
-                                checkAlarm();
-
-                            } catch (Exception e) {
-                                Log.d(TAG, "doAnalysis(): Try0 Failed to run analysis", e);
-                            }
-
-                            try {
-                                sendMessage(MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-                            } catch (Exception e) {
-                                Log.e(TAG, "sendDataToPhone(): Failed to run analysis", e);
-                            }
-                            mSdData.mNsamp = 0;
-                            mStartTs = event.timestamp;
-                        } else if (mSdData.mNsamp > NSAMP) {
-                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
-                        }
-                    } else {
-                        Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
-                    }
-
-                } else {
-                    Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
-                }
-
-            } else {
-                Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
-            }
-        } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
-
-    }
 
     /**
      * doAnalysis() - analyse the data if the accelerometer data array mAccData
@@ -1094,3 +1241,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
 
 }
+
+
+
+
+
+

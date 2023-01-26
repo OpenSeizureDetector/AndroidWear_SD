@@ -150,6 +150,7 @@ public class SdData implements Parcelable {
             Log.v(TAG, "fromJSON(): dataTime = " + dataTime.toString());
             maxVal = jo.optInt("maxVal");
             maxFreq = jo.optInt("maxFreq");
+            mNsampDefault = jo.optInt("mNsampDefault", 250);
             mSampleFreq = jo.optLong("sampleFreq", 25);
             specPower = jo.optInt("specPower");
             roiPower = jo.optInt("roiPower");

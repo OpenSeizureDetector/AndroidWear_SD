@@ -97,6 +97,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
     public double[] mAccData;
+    public double sampleConversionFactor;
     private Intent batteryStatusIntent;
     // Notification ID
     private final int NOTIFICATION_ID = 1;
@@ -114,7 +115,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private CharSequence mNotChName = "OSD Notification Channel";
     private float sampleTime;
     private float sampleDiff;
-    private float defaultSampleTime = 10f;
+    private double defaultSampleTime = 10d;
+    private double conversionSampleFactor = 1d;
 
 
     private int mAlarmFreqMin = 3;  // Frequency ROI in Hz
@@ -391,6 +393,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 if (Objects.equals(input, wearableAppCheckPayload))
                     sendMessage(APP_OPEN_WEARABLE_PAYLOAD_PATH, wearableAppCheckPayloadReturnACK);
                 if (Objects.equals(input, wearableAppCheckPayloadReturnACK))
+                    if (sensorsActive) unBindSensorListeners();
                     bindSensorListeners();
                 Log.d(TAG, "!messageEventPath.isEmpty() && Objects.equals(messageEventPath, APP_OPEN_WEARABLE_PAYLOAD_PATH) We returned from sending message.");
 
@@ -413,6 +416,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
+
+                if (sensorsActive) unBindSensorListeners();
+                bindSensorListeners();
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
@@ -512,6 +518,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
             // 25 Hz == 0,04s
             // 1s == 1.000.000 us (sample interval)
             // sampleTime = 40.000 uS == (SampleTime (s) * 1000)
+            double defaultSampleTimeUs = (double) mSdData.mNsampDefault / (double) SIMPLE_SPEC_FMAX;
+            double mSDDataSampleTimeUs = (double) mSdData.mNsampDefault / (double) mSdData.mDataUpdatePeriod;
+            conversionSampleFactor = defaultSampleTimeUs / mSDDataSampleTimeUs;
             int sampleTimeAccelerationData = (int) (1000f * (NSAMP / SIMPLE_SPEC_FMAX));
             mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);

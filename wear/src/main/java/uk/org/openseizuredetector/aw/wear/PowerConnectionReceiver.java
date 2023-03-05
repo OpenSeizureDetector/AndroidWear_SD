@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector;
+package uk.org.openseizuredetector.aw.wear;
 
 import android.app.job.JobScheduler;
 import android.app.job.JobService;

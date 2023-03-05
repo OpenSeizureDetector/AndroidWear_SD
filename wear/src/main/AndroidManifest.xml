@@ -36,7 +36,7 @@
             android:value="true" />
 
         <activity
-            android:name=".StartUpActivity"
+            android:name=".wear.StartUpActivity"
             android:enabled="true"
             android:exported="true"
             android:launchMode="singleTask">
@@ -44,15 +44,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host=".wear.StartUpActivity"
+                    android:scheme="uk.org.openseizuredetector.aw.wear.startWear" />
+            </intent-filter>
         </activity>
 
         <service
-            android:name=".AWSdService"
+            android:name=".wear.AWSdService"
             android:enabled="true"
             android:exported="true" />
 
         <activity
-            android:name=".AWSdMainActivity"
+            android:name=".wear.AWSdMainActivity"
             android:exported="true"
             android:label="Main Activity">
             <intent-filter>

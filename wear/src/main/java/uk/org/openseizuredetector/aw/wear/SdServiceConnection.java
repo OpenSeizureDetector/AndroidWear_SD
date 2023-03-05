@@ -22,7 +22,7 @@
   along with pebble_sd.  If not, see <http://www.gnu.org/licenses/>.
 
 */
-package uk.org.openseizuredetector;
+package uk.org.openseizuredetector.aw.wear;
 
 import android.content.ComponentName;
 import android.content.Context;

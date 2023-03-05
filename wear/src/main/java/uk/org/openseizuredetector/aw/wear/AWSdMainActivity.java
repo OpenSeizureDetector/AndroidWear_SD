@@ -1,13 +1,15 @@
-package uk.org.openseizuredetector;
+package uk.org.openseizuredetector.aw.wear;
 
 import android.app.Activity;
 import android.os.Bundle;
 import android.view.ViewStub;
 import android.widget.TextView;
 
+import uk.org.openseizuredetector.aw.R;
+
 public class AWSdMainActivity extends Activity {
 
-    private final static String TAG="AWSdMainActivity";
+    private final static String TAG = "AWSdMainActivity";
 
     private TextView mTextView;
     //private ToggleButton mToggleButton;

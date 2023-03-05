@@ -1,6 +1,4 @@
-package uk.org.openseizuredetector;
-
-import static com.google.android.material.internal.ContextUtils.getActivity;
+package uk.org.openseizuredetector.aw.wear;
 
 import android.Manifest;
 import android.app.Activity;
@@ -12,7 +10,9 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -27,18 +27,26 @@ import android.widget.ToggleButton;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.preference.PreferenceManager;
 import androidx.wear.ambient.AmbientModeSupport;
+
+import com.google.android.wearable.intent.RemoteIntent;
 
 import java.util.Calendar;
 import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import uk.org.openseizuredetector.aw.R;
+
 public class StartUpActivity extends AppCompatActivity
         implements AmbientModeSupport.AmbientCallbackProvider {
 
-    private SdServiceConnection mConnection;
     private static final String TAG = "StartUpActivity";
+    private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
+    private static Context mContext = null;
+    private static Notification mNotificationBuilder;
+    private SdServiceConnection mConnection;
     private TextView mTextView;
     private Timer mUiTimer;
     private Timer mOkTimer;
@@ -46,15 +54,13 @@ public class StartUpActivity extends AppCompatActivity
     private TextView mAlarmText;
     private Button mOKButton;
     private Button mHelpButton;
-    private static Context mContext = null;
-    private static Notification mNotificationBuilder;
-    private static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
     private AWSdService mAWSdService;
     private Service aWSdService;
     private Intent mServiceIntent;
     private StringBuilder textViewBuilder;
     private Handler mHandler = new Handler();
     private OsdUtil mUtil;
+    private SharedPreferences SP = null;
 
 
     @Override
@@ -94,9 +100,9 @@ public class StartUpActivity extends AppCompatActivity
                     if (mConnection.mAWSdService.mSdData != null) {
                         if (toggleButton.isChecked()) {
                             //checked is now true, meaning alarms should be off
-                            mConnection.mAWSdService.mSdData.alarmState = 6;
+                            mConnection.mAWSdService.mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_OFF;
                         } else {
-                            mConnection.mAWSdService.mSdData.alarmState = 0;
+                            mConnection.mAWSdService.mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_ON;
                             //checked is now false, meaning alarms should be on
                         }
                     } else {
@@ -161,14 +167,14 @@ public class StartUpActivity extends AppCompatActivity
         if (mConnection == null) mConnection = new SdServiceConnection(mContext);
     }
 
-    public Activity mGgetActivity(Context context) {
+    public Activity mGetActivity(Context context) {
         if (context == null) {
             return null;
         } else if (context instanceof ContextWrapper) {
             if (context instanceof Activity) {
                 return (Activity) context;
             } else {
-                return getActivity(((ContextWrapper) context).getBaseContext());
+                return mGetActivity(((ContextWrapper) context).getBaseContext());
             }
         }
 
@@ -193,53 +199,56 @@ public class StartUpActivity extends AppCompatActivity
             } else {
                 Log.i(TAG, "onStart() - server not running - isServerRunning=" + mUtil.isServerRunning());
                 // Wait 0.1 second to give the server chance to shutdown in case we have just shut it down below, then start it
-                mHandler.postDelayed(() -> {
-                    Log.i(TAG, "onStart() - starting server after delay -isServerRunning=" + mUtil.isServerRunning());
-                    mUtil.startServer();
-                    // Bind to the service.
-                    Log.i(TAG, "onStart() - binding to server");
+
+                Log.i(TAG, "onStart() - starting server after delay -isServerRunning=" + mUtil.isServerRunning());
+                mUtil.startServer();
+                // Bind to the service.
+                Log.i(TAG, "onStart() - binding to server");
+                RemoteIntent.startRemoteActivity(mContext, new Intent(Intent.ACTION_VIEW)
+                        .addCategory(Intent.CATEGORY_BROWSABLE)
+                        .setData(Uri.parse(Constants.ACTION.STARTFOREGROUND_ACTION + "://.wear.StartUpActivity")), null);
+                if (mTextView != null)
+                    mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
+                if (mTextView != null)
+                    mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": onStart").toString());
+                try {
+                    // Start the server
+                    Log.d(TAG, "OsdUtil.startServer()");
+                    /*mServiceIntent = new Intent(mContext, AWSdService.class);
+                    mServiceIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                    mServiceIntent.setData(Uri.parse("Start"));
+                    mServiceIntent.setAction(Constants.ACTION.STARTFOREGROUND_ACTION);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        Log.i(TAG, "Starting Foreground Service (Android 8 and above)");
+                        mContext.startForegroundService(mServiceIntent);
+                    } else {
+                        Log.i(TAG, "Starting Normal Service (Pre-Android 8)");
+                        mContext.startService(mServiceIntent);
+                    }*/
+                    mUtil.bindToServer(mContext, mConnection);
                     if (mTextView != null)
-                        mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
+                        mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Bound to AWSdService").toString());
+                } catch (Exception e) {
+                    Log.e(TAG, "onStart(): Failed to bind to service: ", e);
                     if (mTextView != null)
-                        mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": onStart").toString());
-                    try {
-                        // Start the server
-                        Log.d(TAG, "OsdUtil.startServer()");
-                        /*mServiceIntent = new Intent(mContext, AWSdService.class);
-                        mServiceIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-                        mServiceIntent.setData(Uri.parse("Start"));
-                        mServiceIntent.setAction(Constants.ACTION.STARTFOREGROUND_ACTION);
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            Log.i(TAG, "Starting Foreground Service (Android 8 and above)");
-                            mContext.startForegroundService(mServiceIntent);
+                        mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
+                }
+                if (mConnection.mAWSdService != null)
+                    if (mConnection.mAWSdService.mSdData != null)
+                        if (!mConnection.mAWSdService.mSdData.serverOK) {
+                            Log.e(TAG, "onStart(): no initialised server");
+                            mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
                         } else {
-                            Log.i(TAG, "Starting Normal Service (Pre-Android 8)");
-                            mContext.startService(mServiceIntent);
-                        }*/
-                        mUtil.bindToServer(mContext, mConnection);
-                        if (mTextView != null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Bound to AWSdService").toString());
-                    } catch (Exception e) {
-                        Log.e(TAG, "onStart(): Failed to bind to service: ", e);
-                        if (mTextView != null)
-                            mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
-                    }
-                    if (mConnection.mAWSdService != null)
-                        if (mConnection.mAWSdService.mSdData != null)
-                            if (!mConnection.mAWSdService.mSdData.serverOK) {
-                                Log.e(TAG, "onStart(): no initialised server");
-                                mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
-                            } else {
-                                Log.e(TAG, "onStart(): no initialised server");
-                                mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
-                            }
-                }, 100);
+                            Log.e(TAG, "onStart(): no initialised server");
+                            mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
+                        }
+
                 //if (mContext == null) mContext = this;
                 //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
                 //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
                 if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                    ActivityCompat.requestPermissions(getActivity(this),
+                    ActivityCompat.requestPermissions(mGetActivity(this),
                             new String[]{Manifest.permission.BODY_SENSORS},
                             PERMISSION_REQUEST_BODY_SENSORS);
 
@@ -247,15 +256,23 @@ public class StartUpActivity extends AppCompatActivity
                     Log.d(TAG, "ALREADY GRANTED");
                 }
             }
+            SP = PreferenceManager
+                    .getDefaultSharedPreferences(mContext);
+            mConnection.mAWSdService.mMobileNodeUri = SP.getString(Constants.GLOBAL_CONSTANTS.intentAction, "");
+            if (mConnection.mAWSdService.mMobileNodeUri.equalsIgnoreCase("")) {
+                mHandler.postDelayed(() -> {
+                    mConnection.mAWSdService.setReceiverAndUpdateMobileUri();
+                }, 300);
+
+            }
 
         } catch (Exception e) {
             Log.v(TAG, "onCreate(): Error in binding Service variable", e);
         }
 
 
-
-
     }
+
 
     @Override
     protected void onResume() {
@@ -284,8 +301,14 @@ public class StartUpActivity extends AppCompatActivity
         if (mConnection != null)
             if (mConnection.mAWSdService != null)
                 if (mConnection.mBound)
-                    if (mConnection.mAWSdService.mSdData.mDataType == "stopService")
-                        mUtil.stopServer();
+                    if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType))
+                        if (!Objects.equals(mConnection.mAWSdService.mMobileNodeUri, null)) {
+                            SharedPreferences.Editor editor = SP.edit();
+                            editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
+                            editor.apply();
+                        }
+
+        mUtil.stopServer();
         mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 
@@ -338,18 +361,6 @@ public class StartUpActivity extends AppCompatActivity
         return new MyAmbientCallback();
     }
 
-    private class TurnOffOk extends TimerTask {
-        @Override
-        public void run() {
-            if (mAWSdService == null) {
-                Log.v(TAG, "Ok Update - service is null");
-            } else {
-                Log.v(TAG, "Ok Update - back to 0");
-                mConnection.mAWSdService.mSdData.alarmState = 0;
-            }
-        }
-    }
-
     private static class MyAmbientCallback extends AmbientModeSupport.AmbientCallback {
         @Override
         public void onEnterAmbient(Bundle ambientDetails) {
@@ -367,6 +378,18 @@ public class StartUpActivity extends AppCompatActivity
         public void onUpdateAmbient() {
             // Update the content
             Log.d(TAG, "onUpdateAmbient(): Updating ambient");
+        }
+    }
+
+    private class TurnOffOk extends TimerTask {
+        @Override
+        public void run() {
+            if (mAWSdService == null) {
+                Log.v(TAG, "Ok Update - service is null");
+            } else {
+                Log.v(TAG, "Ok Update - back to 0");
+                mConnection.mAWSdService.mSdData.alarmState = 0;
+            }
         }
     }
 
@@ -419,8 +442,8 @@ public class StartUpActivity extends AppCompatActivity
                                         .append(" time: ")
                                         .append(Calendar.getInstance().getTime())
                                         .append(" ❤️ ")
-                                        .append((short) mConnection.mAWSdService.mSdData.heartCur)
-                                        .append(" batt% ")
+                                        .append((short) mConnection.mAWSdService.mSdData.mHR)
+                                        .append(" \uD83D\uDD0B% ")
                                         .append(mConnection.mAWSdService.mSdData.batteryPc)
                                         .toString());
 

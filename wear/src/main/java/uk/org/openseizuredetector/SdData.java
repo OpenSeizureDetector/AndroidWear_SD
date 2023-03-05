@@ -38,6 +38,11 @@ import org.json.JSONObject;
 public class SdData implements Parcelable {
     private final static String TAG = "SdData";
     private final static int N_RAW_DATA = 500;  // 5 seconds at 100 Hz.
+
+    // Seizure Detection Algorithm Selection
+    public boolean mOsdAlarmActive;
+    public boolean mCnnAlarmActive;
+
     /* Analysis settings */
     public String phoneAppVersion = "";
     public boolean haveSettings = false;   // flag to say if we have received settings or not.
@@ -50,6 +55,7 @@ public class SdData implements Parcelable {
     public short mFallThreshMax;
     public short mFallWindow;
     public long mSdMode;
+    public int mDefaultSampleCount;
     public long mSampleFreq;
     public long analysisPeriod;
     public long alarmFreqMin;
@@ -60,8 +66,6 @@ public class SdData implements Parcelable {
     public long alarmTime;
     public long alarmThresh;
     public long alarmRatioThresh;
-    public double heartAvg;
-    public double heartCur;
     public long batteryPc;
     private JSONArray arr;
     private JSONArray rawArr;
@@ -73,13 +77,21 @@ public class SdData implements Parcelable {
     /* Heart Rate Alarm Settings */
     public boolean mHRAlarmActive = false;
     public boolean mHRNullAsAlarm = false;
-    public double mHRThreshMin = 40d;
-    public double mHRThreshMax = 150d;
+    public boolean mHRAlarmStanding = false;
+    public boolean mHRFaultStanding = false;
+    public double mHRThreshMin = 40.0;
+    public double mHRThreshMax = 150.0;
+    public double mHRAvg = -1d;
+    public double mHR = -1d;
 
     /* Oxygen Saturation Alarm Settings */
     public boolean mO2SatAlarmActive = false;
     public boolean mO2SatNullAsAlarm = false;
     public double mO2SatThreshMin = 80.0;
+    public double mO2Sat = -1d;
+
+    public boolean mO2SatAlarmStanding = false;
+    public boolean mO2SatFaultStanding = false;
 
     /* Watch App Settings */
     public String dataSourceName = "";
@@ -89,11 +101,15 @@ public class SdData implements Parcelable {
     public String watchSdName = "";
 
 
-    public double rawData[];
-    public double rawData3D[];
+    public double[] rawData;
+    public double[] rawData3D;
     public double dT;
     public boolean watchConnected = false;
-    public short curHeartAvg = 0;
+
+
+    public int mNsamp = 0;
+    public int NSAMP = 0;
+    public int mNsampDefault = 250;
 
     /* Analysis results */
     public Time dataTime = null;
@@ -106,21 +122,14 @@ public class SdData implements Parcelable {
     public long roiPower;
     public long roiRatio;
     public String alarmPhrase;
-    public int simpleSpec[];
+    public int[] simpleSpec;
     public boolean watchAppRunning = false;
-    public boolean mHRAlarmStanding = false;
     public boolean serverOK = false;
-    public boolean mHRFaultStanding = false;
-    public double mHR = 0;
-    public double mO2Sat = 0d;
 
-    public boolean mO2SatAlarmStanding = false;
     public String mDataType;
     public String phoneName = "";
-    public int mNsamp = 0;
-    public int NSAMP = 0;
-    public int mNsampDefault = 250;
 
+    public double mPseizure = 0.;
 
     public SdData() {
         simpleSpec = new int[10];
@@ -128,7 +137,6 @@ public class SdData implements Parcelable {
         rawData3D = new double[N_RAW_DATA * 3];
         dT = 0d;
         dataTime = new Time(Time.getCurrentTimezone());
-        mSampleFreq = 25;
     }
 
     /*
@@ -148,9 +156,10 @@ public class SdData implements Parcelable {
             // FIXME - this doesn't work!!!
             dataTime.setToNow();
             Log.v(TAG, "fromJSON(): dataTime = " + dataTime.toString());
+            mDefaultSampleCount = jo.optInt("defaultSampleCount");
             maxVal = jo.optInt("maxVal");
             maxFreq = jo.optInt("maxFreq");
-            mNsampDefault = jo.optInt("mNsampDefault", 250);
+            analysisPeriod = jo.optInt("mSamplePeriod");
             mSampleFreq = jo.optLong("sampleFreq", 25);
             specPower = jo.optInt("specPower");
             roiPower = jo.optInt("roiPower");
@@ -165,14 +174,13 @@ public class SdData implements Parcelable {
             mHRAlarmStanding = jo.optBoolean("hrAlarmStanding");
             mHRThreshMax = jo.optDouble("hrThreshMax");
             mHRThreshMin = jo.optDouble("hrThreshMin");
+            mHR = jo.optDouble("hr");
+            /*if (mHR >= 0.0) {
+                mHRAlarmActive = true;
+            }*/
+
             mDataType = jo.optString("dataType", "raw");
             phoneName = jo.optString("phoneName");
-            mHR = (short) jo.optInt("hr");
-            /*
-                 if (mHR >= 0.0) {
-                    mHRAlarmActive = true;
-                }
-            */
             specArr = jo.optJSONArray("simpleSpec");
             for (int i = 0; i < specArr.length(); i++) {
                 simpleSpec[i] = specArr.optInt(i);
@@ -198,12 +206,11 @@ public class SdData implements Parcelable {
         return toDataString(includeRawData);
     }
 
-
     public String toDatapointJSON() {
         String retval;
         retval = "SdData.toDatapointJSON() Output";
         try {
-            JSONObject jsonObj = new JSONObject();
+            jsonObj = new JSONObject();
             if (dataTime != null) {
                 jsonObj.put("dataTime", dataTime.format("%d-%m-%Y %H:%M:%S"));
                 jsonObj.put("dataTimeStr", dataTime.format("%Y%m%dT%H%M%S"));
@@ -220,9 +227,9 @@ public class SdData implements Parcelable {
             jsonObj.put("roiRatio", 10 * roiPower / specPower);
             jsonObj.put("alarmState", alarmState);
             jsonObj.put("alarmPhrase", alarmPhrase);
-            jsonObj.put("heartCur", heartCur);
             jsonObj.put("hr", mHR);
             jsonObj.put("o2Sat", mO2Sat);
+            jsonObj.put("pSeizure", mPseizure);
             jsonObj.put("dataType", mDataType);
             jsonObj.put("sdName", watchSdName);
             jsonObj.put("sdVersion", watchSdVersion);
@@ -232,7 +239,6 @@ public class SdData implements Parcelable {
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
             }
-
             jsonObj.put("simpleSpec", arr);
             rawArr = new JSONArray();
             for (int i = 0; i < rawData.length; i++) {
@@ -240,11 +246,13 @@ public class SdData implements Parcelable {
             }
             //Log.v(TAG,"rawData[0]="+rawData[0]+", rawArr[0]="+rawArr.getDouble(0));
             jsonObj.put("rawData", rawArr);
+
             raw3DArr = new JSONArray();
             for (int i = 0; i < rawData3D.length; i++) {
                 raw3DArr.put(rawData3D[i]);
             }
             jsonObj.put("rawData3D", raw3DArr);
+
             retval = jsonObj.toString();
             Log.v(TAG, "retval rawData=" + retval);
         } catch (Exception ex) {
@@ -271,6 +279,7 @@ public class SdData implements Parcelable {
                 jsonObj.put("dataTime", "00-00-00 00:00:00");
             }
             jsonObj.put("dataType", "settings");
+            jsonObj.put("defaultSampleCount", mDefaultSampleCount);
             jsonObj.put("batteryPc", batteryPc);
             jsonObj.put("watchConnected", watchConnected);
             jsonObj.put("watchAppRunning", watchAppRunning);
@@ -284,6 +293,8 @@ public class SdData implements Parcelable {
             jsonObj.put("alarmFreqMax", alarmFreqMax);
             jsonObj.put("alarmThresh", alarmThresh);
             jsonObj.put("alarmRatioThresh", alarmRatioThresh);
+            jsonObj.put("osdAlarmActive", mOsdAlarmActive);
+            jsonObj.put("cnnAlarmActive", mCnnAlarmActive);
             jsonObj.put("hrAlarmActive", mHRAlarmActive);
             jsonObj.put("hrAlarmStanding", mHRAlarmStanding);
             jsonObj.put("hrThreshMin", mHRThreshMin);
@@ -292,6 +303,7 @@ public class SdData implements Parcelable {
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
             jsonObj.put("dataSourceName", dataSourceName);
+            Log.v(TAG, "phoneAppVersion=" + phoneAppVersion);
             jsonObj.put("phoneAppVersion", phoneAppVersion);
             jsonObj.put("watchPartNo", watchPartNo);
             jsonObj.put("watchSdName", watchSdName);
@@ -349,6 +361,7 @@ public class SdData implements Parcelable {
             jsonObj.put("sdMode", mSdMode);
             jsonObj.put("sampleFreq", mSampleFreq);
             jsonObj.put("analysisPeriod", analysisPeriod);
+            jsonObj.put("defaultSampleCount", mDefaultSampleCount);
             jsonObj.put("alarmFreqMin", alarmFreqMin);
             jsonObj.put("alarmFreqMax", alarmFreqMax);
             jsonObj.put("alarmThresh", alarmThresh);
@@ -357,18 +370,20 @@ public class SdData implements Parcelable {
             jsonObj.put("hrAlarmStanding", mHRAlarmStanding);
             jsonObj.put("hrThreshMin", mHRThreshMin);
             jsonObj.put("hrThreshMax", mHRThreshMax);
-            jsonObj.put("hr", heartCur);
-            jsonObj.put("curHeartAvg", heartAvg);
+            jsonObj.put("hr", mHR);
             jsonObj.put("o2SatAlarmActive", mO2SatAlarmActive);
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);
             jsonObj.put("o2Sat", mO2Sat);
+            jsonObj.put("cnnAlarmActive", mCnnAlarmActive);
+            jsonObj.put("pSeizure", mPseizure);
             jsonObj.put("sdName", watchSdName);
             jsonObj.put("sdVersion", watchSdVersion);
             jsonObj.put("watchFwVersion", watchFwVersion);
             jsonObj.put("watchPartNo", watchPartNo);
+            jsonObj.put("phoneName", phoneName);
 
-            JSONArray arr = new JSONArray();
+            arr = new JSONArray();
             for (int i = 0; i < simpleSpec.length; i++) {
                 arr.put(simpleSpec[i]);
             }
@@ -381,6 +396,7 @@ public class SdData implements Parcelable {
                     rawArr.put(rawData[i]);
                 }
                 jsonObj.put("rawData", rawArr);
+
                 raw3DArr = new JSONArray();
                 for (int i = 0; i < rawData3D.length; i++) {
                     raw3DArr.put(rawData3D[i]);
@@ -419,7 +435,7 @@ public class SdData implements Parcelable {
         retval = retval + ", " + roiPower;
         retval = retval + ", " + mSampleFreq;
         retval = retval + ", " + alarmPhrase;
-        retval = retval + ", " + heartCur;
+        retval = retval + ", " + mHR;
         retval = retval + ", " + mO2Sat;
         if (includeRawData) {
             for (int i = 0; i < mNsamp; i++) {

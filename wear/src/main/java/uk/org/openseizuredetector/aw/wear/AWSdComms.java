@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector;
+package uk.org.openseizuredetector.aw.wear;
 
 /**
  * Created by graham on 13/02/17.

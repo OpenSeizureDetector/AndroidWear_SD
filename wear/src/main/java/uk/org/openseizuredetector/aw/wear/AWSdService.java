@@ -402,9 +402,13 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 Log.v(TAG, "onMessageReceived() init_message " + s1 + " Received new settings failed to process", e);
             }
             input = null;
-        } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_TEST_RECEIVED)) {
+        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_TEST_RECEIVED.equals(messageEventPath)) {
             //TODO
-        } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED)) {
+        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
+            if (sensorsActive) unBindSensorListeners();
+            bindSensorListeners();
+            //TODO
+        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED.equals(messageEventPath)) {
             Log.v(TAG, "Received new settings");
 
             try {
@@ -796,8 +800,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
             if (task.isSuccessful()) {
                 if (task.getResult().size() > 0) {
 
-                    mMobileNodeUri = nodeClient.getConnectedNodes().getResult().get(0).getId();
-                    mMobileNodeDisplayName = nodeClient.getConnectedNodes().getResult().get(0).getDisplayName();
+                    mMobileNodeUri = task.getResult().get(0).getId();
+                    mMobileNodeDisplayName = task.getResult().get(0).getDisplayName();
                     capabilityClient = Wearable.getCapabilityClient(mContext);
                     capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD + ".wear");
                     capabilityClient.addListener(this::onCapabilityChanged, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);

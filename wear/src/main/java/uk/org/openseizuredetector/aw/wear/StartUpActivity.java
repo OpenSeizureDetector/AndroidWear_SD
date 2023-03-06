@@ -61,6 +61,7 @@ public class StartUpActivity extends AppCompatActivity
     private Handler mHandler = new Handler();
     private OsdUtil mUtil;
     private SharedPreferences SP = null;
+    private boolean activateStopByBack = false;
 
 
     @Override
@@ -295,20 +296,34 @@ public class StartUpActivity extends AppCompatActivity
     }
 
     @Override
+    public void onBackPressed() {
+        if (isFinishing()) {
+
+        } else if (!activateStopByBack) {
+            mUtil.showToast("press again to quit");
+            activateStopByBack = true;
+        } else {
+            super.onBackPressed();
+            finish();
+        }
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
         Log.v(TAG, "onStop()");
         if (mConnection != null)
             if (mConnection.mAWSdService != null)
                 if (mConnection.mBound)
-                    if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType))
+                    if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType) || activateStopByBack) {
                         if (!Objects.equals(mConnection.mAWSdService.mMobileNodeUri, null)) {
                             SharedPreferences.Editor editor = SP.edit();
                             editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
                             editor.apply();
                         }
+                        mUtil.stopServer();
+                    }
 
-        mUtil.stopServer();
         mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 

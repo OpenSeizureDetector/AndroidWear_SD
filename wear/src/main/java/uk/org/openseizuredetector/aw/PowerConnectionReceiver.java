@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector.aw.wear;
+package uk.org.openseizuredetector.aw;
 
 import android.app.job.JobScheduler;
 import android.app.job.JobService;
@@ -9,16 +9,15 @@ import android.content.IntentFilter;
 import android.os.Handler;
 import android.util.Log;
 
-public class ConnectionReceiver extends BroadcastReceiver {
-
+public class PowerConnectionReceiver extends BroadcastReceiver {
     private final static String TAG = Constants.TAGS.AWSDService;
     private Context mContext = null;
     private Handler mHandler = new Handler();
     private OsdUtil mUtil = null;
     private SdServiceConnection sdServiceConnection = null;
 
-    ConnectionReceiver() {
-        Log.d(TAG, "ConnectionReceiver() constructed");
+    public PowerConnectionReceiver() {
+        Log.d(TAG, "PowerConnectionReceiver() constructed");
     }
 
     /**
@@ -59,13 +58,11 @@ public class ConnectionReceiver extends BroadcastReceiver {
      */
     @Override
     public void onReceive(Context context, Intent intent) {
-       /* Log.d(TAG,"onReceive(): Received action:  "+ intent.getAction());
+        Log.d(TAG, "onReceive(): Received action:  " + intent.getAction());
         Log.d(Constants.TAGS.AWSDService, "onReceive(): Received action:  " + intent.getAction());
-        Intent mAWSdServiceIntent = new Intent(mContext,AWSdService.class)
-                .setAction(Constants.ACTION.BATTERYUPDATE_ACTION)
-                .setFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-                .setData(Uri.parse("update"))
-                .putExtra("eventData",intent.getAction());
-*/
+        Intent sendIntent = new Intent(Constants.ACTION.BATTERYUPDATE_ACTION);
+        sendIntent.putExtra("eventData", Constants.ACTION.CONNECTIONUPDATE_ACTION);
+        context.sendBroadcast(sendIntent);
     }
+
 }

@@ -61,5 +61,11 @@ dependencies {
 
     implementation 'androidx.appcompat:appcompat:1.7.0-alpha01'
     implementation 'androidx.preference:preference:1.2.0'
+    // Use to implement support for interactions from the Wearables to Phones
+    // Use to implement support for interactions between the Wearables and Phones
+    implementation "androidx.wear:wear-remote-interactions:1.0.0"
+
+    // Work Manager and worker: used instead of Services
+    implementation 'androidx.work:work-runtime:2.8.0'
 
 }

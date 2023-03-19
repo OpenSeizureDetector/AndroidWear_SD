@@ -1,1 +1,0 @@
-package uk.org.openseizuredetector.aw.wear;

@@ -1,11 +1,9 @@
-package uk.org.openseizuredetector.aw.wear;
+package uk.org.openseizuredetector.aw;
 
 import android.app.Activity;
 import android.os.Bundle;
 import android.view.ViewStub;
 import android.widget.TextView;
-
-import uk.org.openseizuredetector.aw.R;
 
 public class AWSdMainActivity extends Activity {
 

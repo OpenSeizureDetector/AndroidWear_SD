@@ -1,34 +1,42 @@
-package uk.org.openseizuredetector.aw.wear;
+package uk.org.openseizuredetector.aw;
 
 import android.Manifest;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.Service;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.ToggleButton;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.preference.PreferenceManager;
 import androidx.wear.ambient.AmbientModeSupport;
+import androidx.wear.remote.interactions.RemoteActivityHelper;
+import androidx.work.Constraints;
+import androidx.work.Data;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
 
 import com.google.android.wearable.intent.RemoteIntent;
 
@@ -37,8 +45,11 @@ import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import uk.org.openseizuredetector.aw.R;
+import uk.org.openseizuredetector.SdData;
 
+/**
+ * with modifications of : https://developer.android.com/guide/background/persistent/how-to/long-running
+ */
 public class StartUpActivity extends AppCompatActivity
         implements AmbientModeSupport.AmbientCallbackProvider {
 
@@ -62,15 +73,62 @@ public class StartUpActivity extends AppCompatActivity
     private OsdUtil mUtil;
     private SharedPreferences SP = null;
     private boolean activateStopByBack = false;
+    long lastPress;
+    Toast backpressToast;
+    private WorkManager workManager;
+    private SdData mSdData = null;
+    private OneTimeWorkRequest workRequest = null;
+    private String mMobileNodeUri = null;
 
+    public static <T extends Parcelable> T unmarshall(byte[] bytes, Parcelable.Creator<T> creator) {
+        Parcel parcel = unmarshall(bytes);
+        return creator.createFromParcel(parcel);
+    }
+
+    public static Parcel unmarshall(byte[] bytes) {
+        Parcel parcel = Parcel.obtain();
+        parcel.unmarshall(bytes, 0, bytes.length);
+        parcel.setDataPosition(0); // this is extremely important!
+        return parcel;
+    }
+
+    public Activity mGetActivity(Context context) {
+        if (context == null) {
+            return null;
+        } else if (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return (Activity) context;
+            } else {
+                return mGetActivity(((ContextWrapper) context).getBaseContext());
+            }
+        }
+
+        return null;
+    }
+
+    public void addListenerOnButton() {
+
+
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
         try {
+
             if (mContext == null) mContext = this;
             if (mUtil == null) mUtil = new OsdUtil(mContext, mHandler);
+            if (Objects.isNull(workManager))
+                workManager = WorkManager.getInstance(mContext);
+            workRequest = new OneTimeWorkRequest.Builder(AWSdService.class)
+                    .setInputData(new Data.Builder().putString(Constants.GLOBAL_CONSTANTS.intentAction, Constants.ACTION.REGISTER_START_INTENT).build()).build();
+            Constraints constraints = new Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.UNMETERED).build();
+
+            workManager.enqueue(workRequest);
+            workManager.getWorkInfoByIdLiveData(workRequest.getId())
+                    .observe(this, this::onChangedObserver);
+
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
             //if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
 
@@ -98,12 +156,12 @@ public class StartUpActivity extends AppCompatActivity
             @Override
             public void onClick(View v) {
                 try {
-                    if (mConnection.mAWSdService.mSdData != null) {
+                    if (mSdData != null) {
                         if (toggleButton.isChecked()) {
                             //checked is now true, meaning alarms should be off
-                            mConnection.mAWSdService.mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_OFF;
+                            mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_OFF;
                         } else {
-                            mConnection.mAWSdService.mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_ON;
+                            mSdData.alarmState = Constants.GLOBAL_CONSTANTS.ALARMS_ON;
                             //checked is now false, meaning alarms should be on
                         }
                     } else {
@@ -124,13 +182,13 @@ public class StartUpActivity extends AppCompatActivity
             public void onClick(View v) {
 
                 try {
-                    if (mConnection.mAWSdService.mSdData != null) {
+                    if (mSdData != null) {
                         //send OK Message
-                        mConnection.mAWSdService.mSdData.alarmState = 10;
-                        mConnection.mAWSdService.ClearAlarmCount();
+                        mSdData.alarmState = 10;
+                        //mConnection.mAWSdService.ClearAlarmCount();
                         mOkTimer = new Timer();
                         mOkTimer.schedule(new TurnOffOk(), 1000);
-                        mConnection.mAWSdService.handleSendingIAmOK();
+                        //mConnection.mAWSdService.handleSendingIAmOK();
                         //After sending message, Send activity to the background
                         moveTaskToBack(true);
 
@@ -149,10 +207,10 @@ public class StartUpActivity extends AppCompatActivity
             @Override
             public void onClick(View v) {
                 //send Help Message
-                mConnection.mAWSdService.mSdData.alarmState = 11;
+                mSdData.alarmState = 11;
                 mOkTimer = new Timer();
                 mOkTimer.schedule(new TurnOffOk(), 1000);
-                mConnection.mAWSdService.handleSendingHelp();
+                //mConnection.mAWSdService.handleSendingHelp();
                 //After sending message, Send activity to the background
                 moveTaskToBack(true);
             }
@@ -168,23 +226,63 @@ public class StartUpActivity extends AppCompatActivity
         if (mConnection == null) mConnection = new SdServiceConnection(mContext);
     }
 
-    public Activity mGetActivity(Context context) {
-        if (context == null) {
-            return null;
-        } else if (context instanceof ContextWrapper) {
-            if (context instanceof Activity) {
-                return (Activity) context;
-            } else {
-                return mGetActivity(((ContextWrapper) context).getBaseContext());
+    private void onChangedObserver(@Nullable WorkInfo workInfo) {
+        if (workInfo != null) {
+            Log.d("oneTimeWorkRequest", "Status changed to : " + workInfo.getState());
+            Data progress = workInfo.getProgress();
+            if (Objects.nonNull(progress)) {
+                byte[] bytes = progress.getByteArray(Constants.GLOBAL_CONSTANTS.mSdDataPath);
+                if (Objects.nonNull(bytes)) {
+                    Parcel parcel = Parcel.obtain();
+                    parcel.unmarshall(bytes, 0, bytes.length);
+                    parcel.setDataPosition(0);
+                    mSdData = unmarshall(bytes, SdData.CREATOR);
+                    runOnUiThread(() -> {
+                        try {
+                            textViewBuilder = new StringBuilder();
+
+                            if (mConnection.mAWSdService == null) {
+                                Log.v(TAG, "UpdateUiTask - service is null");
+                                if (mTextView != null)
+                                    mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
+                            } else {
+                                if (mSdData == null)
+                                    mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
+                                else {
+                                    //Log.v(TAG, "UpdateUiTask() - " +mConnection.mAWSdService.mNSamp);
+                                    if (mTextView != null)
+                                        mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round))
+                                                .append(" Connected: ")
+                                                .append(mSdData.serverOK)
+                                                .append(" time: ")
+                                                .append(Calendar.getInstance().getTime())
+                                                .append(" ❤️ ")
+                                                .append((short) mSdData.mHR)
+                                                .append(" \uD83D\uDD0B% ")
+                                                .append(mSdData.batteryPc)
+                                                .toString());
+
+                                    if (mAlarmText != null && mSdData != null) {
+                                        if (mSdData.alarmState == 2 || mSdData.alarmState == 1) {
+                                            mAlarmText.setVisibility(View.VISIBLE);
+                                        } else {
+                                            mAlarmText.setVisibility(View.INVISIBLE);
+                                        }
+                                    }
+                                }
+                            }
+
+
+                        } catch (Exception e) {
+                            Log.e(TAG, "UpdateUiTask() - runOnUiThread(): ", e);
+                        }
+
+                    });
+
+                }
+
             }
         }
-
-        return null;
-    }
-
-    public void addListenerOnButton() {
-
-
     }
 
     @RequiresApi(api = Build.VERSION_CODES.M)
@@ -195,14 +293,14 @@ public class StartUpActivity extends AppCompatActivity
         try {
             if (mUtil.isServerRunning()) {
                 Log.i(TAG, "onStart() - server running - stopping it - isServerRunning=" + mUtil.isServerRunning());
-                mUtil.bindToServer(mContext, mConnection);
-                mConnection.mAWSdService.parentContext = mContext;
+                //mUtil.bindToServer(mContext, mConnection);
+                //mConnection.mAWSdService.parentContext = mContext;
             } else {
                 Log.i(TAG, "onStart() - server not running - isServerRunning=" + mUtil.isServerRunning());
                 // Wait 0.1 second to give the server chance to shutdown in case we have just shut it down below, then start it
 
                 Log.i(TAG, "onStart() - starting server after delay -isServerRunning=" + mUtil.isServerRunning());
-                mUtil.startServer();
+                //mUtil.startServer();
                 // Bind to the service.
                 Log.i(TAG, "onStart() - binding to server");
                 RemoteIntent.startRemoteActivity(mContext, new Intent(Intent.ACTION_VIEW)
@@ -226,7 +324,9 @@ public class StartUpActivity extends AppCompatActivity
                         Log.i(TAG, "Starting Normal Service (Pre-Android 8)");
                         mContext.startService(mServiceIntent);
                     }*/
-                    mUtil.bindToServer(mContext, mConnection);
+                    //mUtil.bindToServer(mContext, mConnection);
+                    workManager.getWorkInfoByIdLiveData(workRequest.getId())
+                            .observe(this, this::onChangedObserver);
                     if (mTextView != null)
                         mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Bound to AWSdService").toString());
                 } catch (Exception e) {
@@ -234,15 +334,17 @@ public class StartUpActivity extends AppCompatActivity
                     if (mTextView != null)
                         mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
                 }
-                if (mConnection.mAWSdService != null)
-                    if (mConnection.mAWSdService.mSdData != null)
-                        if (!mConnection.mAWSdService.mSdData.serverOK) {
+
+                if (Objects.nonNull(workManager.getWorkInfoById(workRequest.getId())))
+                    if (Objects.nonNull(mSdData)) {
+                        if (!mSdData.serverOK) {
                             Log.e(TAG, "onStart(): no initialised server");
-                            mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
-                        } else {
-                            Log.e(TAG, "onStart(): no initialised server");
-                            mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
+                            //mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
                         }
+                    } else {
+                        Log.e(TAG, "onStart(): no initialised server");
+                        //mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
+                    }
 
                 //if (mContext == null) mContext = this;
                 //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
@@ -259,13 +361,8 @@ public class StartUpActivity extends AppCompatActivity
             }
             SP = PreferenceManager
                     .getDefaultSharedPreferences(mContext);
-            mConnection.mAWSdService.mMobileNodeUri = SP.getString(Constants.GLOBAL_CONSTANTS.intentAction, "");
-            if (mConnection.mAWSdService.mMobileNodeUri.equalsIgnoreCase("")) {
-                mHandler.postDelayed(() -> {
-                    mConnection.mAWSdService.setReceiverAndUpdateMobileUri();
-                }, 300);
-
-            }
+            //next line fails
+            mHandler.postDelayed(() -> sendPreferenceNodeUriToAWSdService(), 300);
 
         } catch (Exception e) {
             Log.v(TAG, "onCreate(): Error in binding Service variable", e);
@@ -274,6 +371,32 @@ public class StartUpActivity extends AppCompatActivity
 
     }
 
+    private void sendPreferenceNodeUriToAWSdService() {
+        if (Objects.nonNull(workManager)) {
+            if (Objects.nonNull(workRequest)) {
+                mMobileNodeUri = SP.getString(Constants.GLOBAL_CONSTANTS.intentAction, "");
+                if (mMobileNodeUri.equalsIgnoreCase("")) {
+                    mHandler.postDelayed(() -> {
+                        workRequest = new OneTimeWorkRequest.Builder(AWSdService.class)
+                                .setInputData(new Data.Builder().putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mMobileNodeUri).build()).build();
+                        Constraints constraints = new Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.UNMETERED).build();
+                        workManager.updateWork(workRequest);
+
+
+                    }, 300);
+                    return;
+                } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    RemoteActivityHelper remoteActivityHelper = new RemoteActivityHelper(mContext, getMainExecutor());
+                    remoteActivityHelper.startRemoteActivity(new Intent(Constants.GLOBAL_CONSTANTS.mAppPackageName), mConnection.mAWSdService.mMobileNodeUri);
+
+                }
+            }
+        } else {
+            mHandler.postDelayed(
+                    () -> sendPreferenceNodeUriToAWSdService()
+                    , 300);
+        }
+    }
 
     @Override
     protected void onResume() {
@@ -282,29 +405,36 @@ public class StartUpActivity extends AppCompatActivity
         super.onResume();
         Log.i(TAG, "onResume()");
 
-        if (!mUtil.isServerRunning()) {
+        workRequest = new OneTimeWorkRequest.Builder(AWSdService.class)
+                .setInputData(new Data.Builder().putString(Constants.GLOBAL_CONSTANTS.intentAction, Constants.ACTION.REGISTER_START_INTENT).build()).build();
+        Constraints constraints = new Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.UNMETERED).build();
+
+        //workManager.enqueue(workRequest);
+        workManager.getWorkInfoByIdLiveData(workRequest.getId())
+                .observe(this, this::onChangedObserver);
+        /*if (!mUtil.isServerRunning()) {
             mUtil.startServer();
         } else {
             mUtil.bindToServer(mContext, mConnection);
             mConnection.mAWSdService.parentContext = mContext;
-        }
-        mUiTimer = new Timer();
+        }*/
+        //mUiTimer = new Timer();
         //TODO: disable update after test
-        mUiTimer.schedule(new UpdateUiTask(), 0, 500);
+        //mUiTimer.schedule(new UpdateUiTask(), 0, 500);
 
 
     }
 
     @Override
     public void onBackPressed() {
-        if (isFinishing()) {
-
-        } else if (!activateStopByBack) {
-            mUtil.showToast("press again to quit");
-            activateStopByBack = true;
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastPress > 5000) {
+            backpressToast = Toast.makeText(getBaseContext(), "Press back again to exit", Toast.LENGTH_LONG);
+            backpressToast.show();
+            lastPress = currentTime;
         } else {
+            if (backpressToast != null) backpressToast.cancel();
             super.onBackPressed();
-            finish();
         }
     }
 
@@ -324,7 +454,7 @@ public class StartUpActivity extends AppCompatActivity
                         mUtil.stopServer();
                     }
 
-        mUiTimer.cancel();
+        //mUiTimer.cancel();
         // FIXME - THERE IS NO WAY TO STOP THE SERVICE - WE ARE DOING THIS TO STRESS TEST BATTERY CONSUMPTION.
 
     }
@@ -345,13 +475,12 @@ public class StartUpActivity extends AppCompatActivity
     protected void onPause() {
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
-        if (mConnection != null)
-            if (mConnection.mAWSdService != null)
-                if (mConnection.mAWSdService.mBound) {
-                    mConnection.mAWSdService.parentContext = null;
-                    mUtil.unbindFromServer(mContext, mConnection);
-                }
-        mUiTimer.cancel();
+
+        if (Objects.nonNull(workRequest))
+            workManager.getWorkInfoByIdLiveData(workRequest.getId())
+                    .removeObservers(this);
+
+        //mUiTimer.cancel();
     }
 
     private boolean isSdServiceRunning() {
@@ -408,7 +537,7 @@ public class StartUpActivity extends AppCompatActivity
         }
     }
 
-    class Connection implements ServiceConnection {
+    /*class Connection implements ServiceConnection {
         public Connection(Context context) {
             mContext = context;
         }
@@ -417,7 +546,7 @@ public class StartUpActivity extends AppCompatActivity
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             AWSdService.Access access = ((AWSdService.Access) iBinder);
             mConnection.mAWSdService.parentConnection = new Connection(mContext);
-            aWSdService = access.getService();
+            aWSdService = ;
             Log.d(TAG, "mAWSdService= : " + mConnection.mAWSdService + " aWSdService = : " + aWSdService +
                     " result in compare: " + Objects.equals(aWSdService, mConnection.mAWSdService));
             Log.i(TAG, "onServiceConnected()" + componentName.toShortString());
@@ -432,7 +561,7 @@ public class StartUpActivity extends AppCompatActivity
             }
             Log.i(TAG, "onServiceDisconnected()" + componentName.toShortString());
         }
-    }
+    }*/
 
     private class UpdateUiTask extends TimerTask {
         @Override

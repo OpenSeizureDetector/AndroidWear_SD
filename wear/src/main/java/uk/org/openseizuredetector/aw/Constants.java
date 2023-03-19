@@ -1,4 +1,4 @@
-package uk.org.openseizuredetector.aw.wear;
+package uk.org.openseizuredetector.aw;
 
 import android.net.Uri;
 
@@ -37,7 +37,12 @@ public class Constants {
         public final String wearReceiverServiceIntent = "wearReceiverServiceIntent";
         public final String mSdDataPath = "mSdDataPath";
         public final String dataType = "dataType";
+        public final String dataTypeSettings = "settings";
+        public final String dataTypeRaw = "raw";
         public final String startId = "startId";
+        public final double maxHeartRefreshRate = 300d;//measured in , 60bpm equals 1Hz
+        //equals 1/s seconds = 400ms  , 300bpm is unlikely but will translate to 300Hz 1/300
+        public final double getMaxHeartRefreshRate = (1d / (maxHeartRefreshRate / 60d)) * 1000;
     }
 
     public interface ACTION {
@@ -59,6 +64,8 @@ public class Constants {
         public static String REGISTER_START_INTENT = "uk.org.openseizuredetector.registerStartIntents";
         public static String REGISTERED_START_INTENT_AW = "uk.org.openseizuredetector.aw.mobile.registeredStartIntents";
         public static String REGISTERED_START_INTENT = "uk.org.openseizuredetector.registeredStartIntents";
+        public static String REGISTER_WEAR_LISTENER = "uk.org.openseizuredetector.aw.mobile.registerWearListener";
+        public static String REGISTERED_WEAR_LISTENER = "uk.org.openseizuredetector.aw.mobile.registeredWearListener";
         public static String CONNECT_WEARABLE_INTENT = "uk.org.openseizuredetector.aw.mobile.connectWearableIntent";
         public static String CONNECTED_WEARABLE_INTENT = "uk.org.openseizuredetector.aw.mobile.connectedWearableIntent";
         public static String DISCONNECT_WEARABLE_INTENT = "uk.org.openseizuredetector.aw.mobile.disConnectIntent";

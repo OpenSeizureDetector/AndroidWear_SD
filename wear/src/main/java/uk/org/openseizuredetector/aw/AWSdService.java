@@ -1,6 +1,7 @@
-package uk.org.openseizuredetector.aw.wear;
+package uk.org.openseizuredetector.aw;
 
 
+import static android.content.Context.NOTIFICATION_SERVICE;
 import static java.lang.Math.sqrt;
 
 import android.Manifest;
@@ -30,15 +31,26 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.os.PowerManager;
 import android.os.Vibrator;
 import android.text.format.Time;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
+import androidx.lifecycle.LiveData;
 import androidx.multidex.BuildConfig;
+import androidx.work.Data;
+import androidx.work.ForegroundInfo;
+import androidx.work.ListenableWorker;
+import androidx.work.WorkManager;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
 
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wearable.CapabilityClient;
@@ -48,6 +60,7 @@ import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.NodeClient;
 import com.google.android.gms.wearable.Wearable;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import org.jtransforms.fft.DoubleFFT_1D;
 
@@ -58,15 +71,15 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.stream.Collectors;
 
 import uk.org.openseizuredetector.SdData;
-import uk.org.openseizuredetector.aw.R;
 
-public class AWSdService extends Service implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
-
-    public static final String ACTIVITY_RECOGNITION = "android.permission.ACTIVITY_RECOGNITION";
+public class AWSdService extends Worker implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
+    // Manifest.permission.ACTIVITY_RECOGNITION
     private final static String TAG = Constants.TAGS.AWSDService;
     private final static int SIMPLE_SPEC_FMAX = 10;   // simple spectrum maximum freq in Hz.
     private static final String CHANNEL_DEFAULT_IMPORTANCE = "2";
@@ -78,7 +91,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private final int DATASHARE_NOTIFICATION_ID = 3;
     private final IBinder mBinder = new SdBinder();
     public boolean requestCreateNewChannelAndInit;
-    public StartUpActivity.Connection parentConnection;
+    //public StartUpActivity.Connection parentConnection;
     public Context parentContext;
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
@@ -88,6 +101,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public String mMobileNodeUri = null;
     public String mMobileNodeDisplayName = null;
     public CapabilityClient capabilityClient = null;
+    public List<Node> allNodes = null;
     public boolean mBound = false;
     protected double accelerationCombined = -1d;
     protected double gravityScaleFactor;
@@ -149,7 +163,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private NotificationManager notificationManager;
     private NotificationCompat.Builder notificationCompatBuilder;
     private Notification mNotification = null;
-    private Intent intentFromOnStart;
+    public ServiceLiveData serviceLiveData = null;
     private Intent intentFromOnBind;
     private Intent intentFromOnRebind;
     private NotificationManager mNM;
@@ -158,6 +172,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private OsdUtil mUtil;
     private boolean prefValHrAlarmActive;
     private boolean mNetworkConnected = false;
+    private Data intentFromOnStart;
     public BroadcastReceiver connectionUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -193,14 +208,19 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private boolean sensorsActive = false;
     private IntentFilter batteryStatusIntentFilter = null;
     private Intent batteryStatusIntent;
+    private Thread mBlockingThread = null;
 
-
-    public AWSdService() {
+    public AWSdService(@NonNull Context context, @NonNull WorkerParameters workerParams) {
+        super(context, workerParams);
+        mContext = context;
         Log.v(TAG, "AWSdService Constructor()");
-        mContext = this;
         Log.d(TAG, "AWSdSevice Constructor result of context compare: " + mContext +
                 " and parentContext: " + parentContext + " result compare: " +
                 Objects.equals(mContext, parentContext));
+
+        notificationManager = (NotificationManager)
+                context.getSystemService(NOTIFICATION_SERVICE);
+
         if (mSensorManager != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
@@ -213,8 +233,20 @@ public class AWSdService extends Service implements SensorEventListener, Message
             }
         }
 
+        mHandler = new Handler(Looper.getMainLooper());
+        mSdData = new SdData();
+        mUtil = new OsdUtil(mContext, mHandler);
+        serviceLiveData = new ServiceLiveData();
 
     }
+
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private void createChannel() {
+        // Create a Notification channel
+        createNotificationChannel();
+    }
+
 
     private static final String returnNewCHANNEL_ID() {
         String currentID = String.valueOf(R.string.app_name) + channelIDs.size();
@@ -268,7 +300,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Flag_Intend = PendingIntent.FLAG_UPDATE_CURRENT;
         }
         PendingIntent contentIntent =
-                PendingIntent.getActivity(this,
+                PendingIntent.getActivity(mContext,
                         0, i, Flag_Intend);
 
 
@@ -306,14 +338,14 @@ public class AWSdService extends Service implements SensorEventListener, Message
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = getString(R.string.app_name);
-            String description = getString(R.string.app_name);
+            CharSequence name = mContext.getString(R.string.app_name);
+            String description = mContext.getString(R.string.app_name);
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
             channel = new NotificationChannel("Default notification", name, importance);
             channel.setDescription(description);
             // Register the channel with the system; you can't change the importance
             // or other notification behaviors after this
-            notificationManager = getSystemService(NotificationManager.class);
+            notificationManager = mContext.getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
             if (!notificationManager.areNotificationsEnabled()) {
                 Log.e(TAG, "createNotificationChannel() - Failure to use notifications. Not enabled", new Throwable());
@@ -337,20 +369,20 @@ public class AWSdService extends Service implements SensorEventListener, Message
     public void prepareAndStartForeground() {
         try {
             requestCreateNewChannelAndInit = false;
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext);
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, mNotification);
             builder.setContentTitle(String.valueOf(R.string.app_name));
             builder.setSmallIcon(R.drawable.icon_24x24);
-            builder.setContentIntent(PendingIntent.getActivity(mContext, 0, new Intent(this, AWSdService.class), PendingIntent.FLAG_UPDATE_CURRENT));
+            builder.setContentIntent(PendingIntent.getActivity(mContext, 0, new Intent(mContext, AWSdService.class), PendingIntent.FLAG_UPDATE_CURRENT));
 
             NotificationCompat.WearableExtender extender = new NotificationCompat.WearableExtender();
-            extender.setBackground(BitmapFactory.decodeResource(getResources(), R.drawable.card_background));
+            extender.setBackground(BitmapFactory.decodeResource(mContext.getResources(), R.drawable.card_background));
             extender.setContentIcon(R.drawable.icon_24x24);
             extender.setHintHideIcon(true);
             extender.extend(builder);
 
             builder.setPriority(NotificationCompat.PRIORITY_LOW);
             builder.setContentText(String.valueOf(R.string.app_name));
-            builder.setLargeIcon(BitmapFactory.decodeResource(getResources(), R.drawable.icon_24x24));
+            builder.setLargeIcon(BitmapFactory.decodeResource(mContext.getResources(), R.drawable.icon_24x24));
             mNotification = builder.build();
             notificationManager.notify(Constants.NOTIFICATION_ID.FOREGROUND_SERVICE, mNotification);
         } catch (Exception e) {
@@ -360,15 +392,37 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     }
 
+
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
         if (mSdData == null) mSdData = new SdData();
+        if (Objects.equals(allNodes, null) ||
+                allNodes.size() == 0) {
+            Task<List<Node>> getAllNodes = mNodeListClient.getConnectedNodes();
+            getAllNodes.addOnSuccessListener(resultNodeList -> {
+                allNodes = resultNodeList;
+                onMessageReceived(messageEvent);
+            });
+            return;
+        }
         Log.v(Constants.GLOBAL_CONSTANTS.TAG_MESSAGE_RECEIVED, "onMessageReceived event received");
         // Get the node id of the node that created the data item from the host portion of
         // the uri.
-        mMobileNodeUri = messageEvent.getSourceNodeId();
-        mWearNode = (Node) mNodeListClient.getConnectedNodes().getResult().stream().filter(node -> node.getId().equals(mMobileNodeUri));
-        mMobileNodeDisplayName = mWearNode.getDisplayName();
+        if (
+                Objects.equals(mMobileNodeUri, null) ||
+                        Objects.equals(mWearNode, null) ||
+                        Objects.equals(mNodeFullName, null)
+        ) {
+            mMobileNodeUri = messageEvent.getSourceNodeId();
+            mWearNode = (Node) allNodes
+                    .stream()
+                    .filter(node -> node.getId().equals(mMobileNodeUri))
+                    .collect(Collectors.toList())
+                    .get(0);
+            mNodeFullName = mWearNode.getDisplayName();
+        }
+
+
         final String s1 = new String(messageEvent.getData(), StandardCharsets.UTF_8);
         final String messageEventPath = messageEvent.getPath();
         Log.v(
@@ -393,34 +447,37 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     sendMessage(Constants.GLOBAL_CONSTANTS.APP_OPEN_WEARABLE_PAYLOAD_PATH, Constants.GLOBAL_CONSTANTS.wearableAppCheckPayloadReturnACK);
                 if (Objects.equals(input, Constants.GLOBAL_CONSTANTS.wearableAppCheckPayloadReturnACK))
                     if (mSdData.analysisPeriod == 0)
-                        sendMessage(Constants.GLOBAL_CONSTANTS.APP_OPEN_WEARABLE_PAYLOAD_PATH, Constants.GLOBAL_CONSTANTS.wearableAppCheckPayloadReturnACK);
-                if (sensorsActive) unBindSensorListeners();
-                bindSensorListeners();
+                        sendMessage(Constants.GLOBAL_CONSTANTS.APP_OPEN_WEARABLE_PAYLOAD_PATH, Constants.ACTION.PULL_SETTINGS_ACTION);
+
                 Log.d(TAG, "!messageEventPath.isEmpty() && Objects.equals(messageEventPath, APP_OPEN_WEARABLE_PAYLOAD_PATH) We returned from sending message.");
 
             } catch (Exception e) {
                 Log.v(TAG, "onMessageReceived() init_message " + s1 + " Received new settings failed to process", e);
             }
             input = null;
-        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_TEST_RECEIVED.equals(messageEventPath)) {
+        } else if ((!messageEventPath.isEmpty()) && Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_TEST_RECEIVED.equals(messageEventPath)) {
             //TODO
-        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
+        } else if ((!messageEventPath.isEmpty()) && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
             if (sensorsActive) unBindSensorListeners();
             bindSensorListeners();
             //TODO
-        } else if (!messageEventPath.isEmpty() && Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED.equals(messageEventPath)) {
+        } else if (!messageEventPath.isEmpty() && Constants.ACTION.PUSH_SETTINGS_ACTION.equals(messageEventPath)) {
             Log.v(TAG, "Received new settings");
 
             try {
                 mSdData.fromJSON(s1);
                 prefValHrAlarmActive = mSdData.mHRAlarmActive;
-                String nodeFullName = mNodeFullName;
-                mNodeFullName = mSdData.phoneName;
+                if (!Objects.equals(mNodeFullName, null))
+                    if (mNodeFullName.isEmpty()) {
+                        String nodeFullName = mNodeFullName;
+                        mNodeFullName = mSdData.phoneName;
+                    }
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
+
 
                 if (sensorsActive) unBindSensorListeners();
                 bindSensorListeners();
@@ -445,6 +502,16 @@ public class AWSdService extends Service implements SensorEventListener, Message
             } catch (Exception e) {
                 Log.e(TAG, "OnMessageReceived(): catch on Received new settings failed to process", e);
             }
+        } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED)) {
+            try {
+                SdData sdData = new SdData();
+                sdData.fromJSON(s1);
+                if (sdData.serverOK) {
+                    mSdData = sdData;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "onMessageReceived()", e);
+            }
         } else {
             Log.v(TAG + "nn", "Not processing received message, displaying in log: " + s1);
         }
@@ -454,15 +521,35 @@ public class AWSdService extends Service implements SensorEventListener, Message
     @Override
     public void onCapabilityChanged(CapabilityInfo capabilityInfo) {
         Log.d(TAG, "CapabilityInfo received: " + capabilityInfo.toString());
-        if (capabilityInfo.equals(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver + ".wear"))
-            if (capabilityInfo.equals(Uri.parse("wear://"))) {
-                mMobileNodesWithCompatibility = capabilityInfo;
-                if (mMobileNodesWithCompatibility.getNodes().isEmpty()) {
-                    Wearable.getMessageClient(mContext).removeListener(this);
-                } else {
-                    Wearable.getMessageClient(mContext).addListener(this);
+        Set<Node> changedNodeSet = null;
+        Node changedNode = null;
+        try {
+            changedNodeSet = capabilityInfo.getNodes();
+            if (changedNodeSet.size() > 0) {
+                Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
+                changedNode = changedNodeSet.stream().findFirst().get();
+
+                if (capabilityInfo.equals(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver)) {
+                    if (capabilityInfo.equals(Uri.parse("wear://"))) {
+                        mMobileNodesWithCompatibility = capabilityInfo;
+                    }
+                    if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
+                        mSdData.watchConnected = true;
+                        mSdData.serverOK = true;
+                        bindSensorListeners();
+                    }
                 }
+            } else {
+                Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
+                mSdData.watchConnected = false;
+                mSdData.serverOK = false;
             }
+        } catch (Exception e) {
+            Log.e(TAG, "onCapabilityChanged(): error", e);
+        } finally {
+            changedNodeSet = null;
+            changedNode = null;
+        }
     }
 
 
@@ -483,10 +570,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
         alarmCount = 0;
     }
 
-    /**
+    /*   *//**
      * onCreate() - called when services is created.  Starts message
      * handler process to listen for messages from other processes.
-     */
+     *//*
     @Override
     public void onCreate() {
         Log.i(TAG, "onCreate()");
@@ -496,7 +583,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         mContext = this;
         mUtil = new OsdUtil(getApplicationContext(), mHandler);
 
-    }
+    }*/
 
     /**
      * Calculate the static values of requested mSdData.mSampleFreq, mSampleTimeUs and factorDownSampling  through
@@ -506,6 +593,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
         // default sampleCount : mSdData.mDefaultSampleCount
         // default sampleTime  : mSdData.analysisPeriod
         // sampleFrequency = sampleCount / sampleTime:
+        if (Double.isNaN(mSdData.mSampleFreq) || Double.isInfinite(mSdData.mSampleFreq) || mSdData.mSampleFreq == 0 || mSdData.analysisPeriod == 0) {
+            mSdData.mSampleFreq = Constants.SD_SERVICE_CONSTANTS.defaultSampleRate;
+            mSdData.analysisPeriod = Constants.SD_SERVICE_CONSTANTS.defaultSampleTime;
+        }
         mSdData.mSampleFreq = (long) mSdData.mDefaultSampleCount / mSdData.analysisPeriod;
 
         // now we have mSampleFreq in number samples / second (Hz) as default.
@@ -525,15 +616,21 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     public void bindSensorListeners() {
         try {
-            calculateStaticTimings();
+            if (mSampleTimeUs < (double) SensorManager.SENSOR_DELAY_NORMAL ||
+                    Double.isInfinite(mSampleTimeUs) ||
+                    Double.isNaN(mSampleTimeUs)) {
+                calculateStaticTimings();
+                if (mSampleTimeUs <= 0d)
+                    mSampleTimeUs = SensorManager.SENSOR_DELAY_NORMAL;
+            }
             mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
             mSdData.watchFwVersion = Build.DISPLAY;
             mSdData.watchPartNo = Build.BOARD;
             mSdData.watchSdName = Build.MODEL;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                if (mContext.checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                    ActivityCompat.requestPermissions(getActivity(this),
+                    ActivityCompat.requestPermissions(getActivity(mContext),
                             new String[]{Manifest.permission.BODY_SENSORS},
                             Constants.GLOBAL_CONSTANTS.PERMISSION_REQUEST_BODY_SENSORS);
 
@@ -543,13 +640,13 @@ public class AWSdService extends Service implements SensorEventListener, Message
                 }
             }
 
-            mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+            mSensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             mSensorManager.registerListener(this, mSensor, (int) mSampleTimeUs, (int) mSampleTimeUs * 3, mHandler);
             mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
-            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate);
             mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
-            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+            mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 3);
             mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
             mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
@@ -560,7 +657,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
             }
         } catch (Exception e) {
-            Log.e(TAG, "bindSensorListners(): Sensor declaration excepmted: ", e);
+            Log.e(TAG, "bindSensorListners(): Sensor declaration excepted: ", e);
         }
     }
 
@@ -592,7 +689,9 @@ public class AWSdService extends Service implements SensorEventListener, Message
                         bindSensorListeners();
 
                 }
+
                 if (intent.getAction().equals(Intent.ACTION_BATTERY_CHANGED)) {
+                    if (Objects.isNull(batteryStatusIntent)) return;
                     int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 
                     int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
@@ -632,12 +731,12 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     private void bindBatteryEvents() {
         batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
-        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
-        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_LOW));
-        registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
-        batteryStatusIntent = registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
-        registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
+        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_LOW));
+        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
+        batteryStatusIntent = mContext.registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
+        mContext.registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
 
     }
 
@@ -649,148 +748,6 @@ public class AWSdService extends Service implements SensorEventListener, Message
 
     };
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        intentFromOnStart = intent;
-        Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
-        int returnFromSuper = super.onStartCommand(intent, flags, startId);
-        if (batteryStatusIntent == null) bindBatteryEvents();
-        mContext = this;
-
-        if (intent == null) return START_NOT_STICKY;
-        if (intent.getData() != null) {
-            if (Objects.equals(intent.getData(), Uri.parse("Start"))) {
-                Log.i(TAG, "Received Start Foreground Intent ");
-                // your start service code
-                try {
-
-                    //if (mTextView != null) mTextView.setText("Service Started");
-                    //if (mTextView != null) mTextView.setText("onStart");
-
-                    // Initialise Notification channel for API level 26 and over
-                    // from https://stackoverflow.com/questions/44443690/notificationcompat-with-api-26
-                    mNM = (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
-                    String mNotChId = "OSD Notification Channel";
-                    mNotificationBuilder = new NotificationCompat.Builder(this, mNotChId);
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        NotificationChannel channel = new NotificationChannel(mNotChId,
-                                mNotChName,
-                                NotificationManager.IMPORTANCE_DEFAULT);
-                        String mNotChDesc = "OSD Notification Channel Description";
-                        channel.setDescription(mNotChDesc);
-                        mNM.createNotificationChannel(channel);
-                    }
-
-                    Log.d(TAG, "onStartCommand(): logging before call startForeground");
-                    // Display a notification icon in the status bar of the phone to
-                    // show the service is running.
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        Log.v(TAG, "showing Notification and calling startForeground (Android 8 and higher)");
-                        if (mNM.areNotificationsEnabled()) showNotification(0);
-                        startForeground(NOTIFICATION_ID, mNotification);
-                    } else {
-                        Log.v(TAG, "showing Notification");
-                        if (mNM.areNotificationsEnabled()) showNotification(0);
-                    }
-                    // If the notification supports a direct reply action, use
-                    // PendingIntent.FLAG_MUTABLE instead.
-
-                } catch (Exception e) {
-                    Log.e(TAG, " OnCreate - Starting Service failed", e);
-                }
-                Log.v(TAG, "onStartCommand() - populating mNodeList");
-                mNodeListClient = Wearable.getNodeClient(mContext);
-
-                Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
-
-                if (mSdData.serverOK && !sensorsActive) bindSensorListeners();
-
-
-                //mAccData = new double[NSAMP];
-                // mSdData = new SdData();
-
-                mVibe = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
-
-
-                // Prevent sleeping
-                PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
-                mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
-
-                if (!mWakeLock.isHeld()) {
-                    mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
-                }
-                try {
-                    Wearable.getCapabilityClient(mContext)
-                            .addListener(
-                                    this,
-                                    Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                            );
-                    Wearable.getMessageClient(mContext).addListener(this);
-                    Log.v(TAG, "onRebind()");
-                } catch (Exception e) {
-                    Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
-
-                }
-                // Initialise the Google API Client so we can use Android Wear messages.
-                try {
-                    if (mSdData.serverOK) {
-
-                        sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "onStartCommand() ", e);
-                }//Eval cutting From Here Until End Function
-                Timer appStartTimer = new Timer();
-                appStartTimer.schedule(new TimerTask() {
-                                           @Override
-                                           public void run() {
-                                               try {
-                                                   Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
-                                                   if (mNodeListClient instanceof List && !mSdData.serverOK) {
-                                                       Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
-                                                       List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
-                                                       if (connectedNodes.size() > 0) {
-                                                           for (Node node : connectedNodes) {
-                                                               Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
-                                                               mSdData.watchConnected = true;
-                                                               mSdData.watchAppRunning = true;
-                                                               mSdData.mDataType = "watchConnect";
-                                                               mMobileNodeUri = node.getId();
-                                                               mNodeFullName = node.getDisplayName();
-                                                               sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                                                               //TODO: Deside what to do with the population of id and name. Nou this is being treated
-                                                               // as broadcast to all client watches.
-                                                           }
-                                                       } else {
-                                                           Log.e(TAG, "TimerTask/Run() :  no nodes found");
-                                                       }
-                                                       //try shift
-
-
-                                                   }
-                                               } catch (Exception e) {
-                                                   Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
-                                               }
-
-                                           }
-
-                                       }
-                        , 5000); //end timerTask
-
-
-            }
-        } else if (intent.getAction().equals(Constants.ACTION.STOPFOREGROUND_ACTION) || intent.getData().equals(Uri.parse("Stop"))) {
-            Log.i(TAG, "Received Stop Foreground Intent");
-            //your end servce code
-            unBindSensorListeners();
-            unregisterReceiver(powerUpdateReceiver);
-            unregisterReceiver(connectionUpdateReceiver);
-            stopForeground(true);
-            stopSelfResult(startId);
-        }
-        if (Objects.equals(intent, null)) return START_NOT_STICKY;
-        return returnFromSuper;
-    }
 
     public void setReceiverAndUpdateMobileUri() {
         NodeClient nodeClient = Wearable.getNodeClient(mContext);
@@ -803,8 +760,8 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     mMobileNodeUri = task.getResult().get(0).getId();
                     mMobileNodeDisplayName = task.getResult().get(0).getDisplayName();
                     capabilityClient = Wearable.getCapabilityClient(mContext);
-                    capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD + ".wear");
-                    capabilityClient.addListener(this::onCapabilityChanged, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);
+                    capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
+                    capabilityClient.addListener(this, Constants.GLOBAL_CONSTANTS.mAppPackageName);
 
                 }
 
@@ -840,10 +797,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
     private void requestPermissions(String[] strings, int i) {
     }
 
+    @NonNull
     @Override
-    public IBinder onBind(Intent intent) {
-        Log.v(TAG, "onBind()");
-        intentFromOnBind = intent;
+    public ListenableFuture<ForegroundInfo> getForegroundInfoAsync() {
+
         try {
             Wearable.getCapabilityClient(mContext)
                     .addListener(
@@ -852,12 +809,22 @@ public class AWSdService extends Service implements SensorEventListener, Message
                     );
             Wearable.getMessageClient(mContext).addListener(this);
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+
         } catch (Exception e) {
             Log.e(TAG, "onBind(): Error in reloading vars ", e);
         }
-        return mBinder;
+        return super.getForegroundInfoAsync();
     }
 
+    /*@Override
+    public IBinder onBind(Intent intent) {
+        Log.v(TAG, "onBind()");
+        intentFromOnBind = intent;
+        return mBinder;
+    }*/
+
+
+    /*
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
@@ -906,124 +873,133 @@ public class AWSdService extends Service implements SensorEventListener, Message
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
         }
 
-    }
+    }*/
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        // is this a heartbeat event and does it have data?
-        if (!isCharging() || mIsCharging) {
-            if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
-                int newValue = Math.round(event.values[0]);
-                //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
-                // only do something if the value differs from the value before and the value is not 0.
-                if (mSdData.mHR != newValue && newValue != 0) {
-                    // save the new value
-                    mSdData.mHR = newValue;
-                    // add it to the list and computer a new average
-                    if (heartRates.size() == 10) {
-                        heartRates.remove(0);
-                    }
-                    heartRates.add(curHeart);
-                }
-                mSdData.mHRAvg = (int) calculateAverage(heartRates);
-                if (heartRates.size() < 4) {
-                    mSdData.mHRAvg = 0;
-                }
-            } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-                // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
-                if (mMode == 0) {
-                    if (mStartEvent == null) {
-                        Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
-                        Log.v(TAG, "onSensorChanged(): saving initial event data");
-                        mStartEvent = event;
-                        mStartTs = event.timestamp;
-                        mSdData.mNsamp = 0;
-                    } else {
-                        mSdData.mNsamp++;
-                    }
-                    if (mSdData.mNsamp >= mSdDataSettings.mDefaultSampleCount) {
-                        Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                        mSdData.dT = 1.0e-9 * (event.timestamp - mStartTs);
-                        mCurrentMaxSampleCount = mSdData.mNsamp;
-                        mSdData.mSampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
-                        mSdData.haveSettings = true;
-                        Log.v(TAG, "onSensorChanged(): Collected data for " + mSdData.dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
-                        accelerationCombined = sqrt(event.values[0] * event.values[0] + event.values[1] * event.values[1] + event.values[2] * event.values[2]);
-                        calculateStaticTimings();
-                        mMode = 1;
-                        mSdData.mNsamp = 0;
-                        mStartTs = event.timestamp;
-                    }
-                } else if (mMode == 1) {
-                    // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
-
-                    if (mSdData.mNsamp == mCurrentMaxSampleCount) {
-
-
-                        // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                        // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                        // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                        // FIXME - we should do some sort of check and disregard samples with long delays in them.
-                        mSdData.dT = 1e-9 * (event.timestamp - mStartTs);
-                        int sampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
-                        Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
-
-                        // DownSample from the **Hz received frequency to 25Hz and convert to mg.
-                        // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
-                        int readPosition = 1;
-
-                        for (int i = 0; i < Constants.SD_SERVICE_CONSTANTS.defaultSampleCount; i++) {
-                            readPosition = (int) (i / mConversionSampleFactor);
-                            if (readPosition < rawDataList.size()) {
-                                mSdData.rawData[i] = gravityScaleFactor * rawDataList.get(readPosition) / SensorManager.GRAVITY_EARTH;
-                                mSdData.rawData3D[i] = gravityScaleFactor * rawDataList3D.get(readPosition) / SensorManager.GRAVITY_EARTH;
-                                mSdData.rawData3D[i + 1] = gravityScaleFactor * rawDataList3D.get(readPosition + 1) / SensorManager.GRAVITY_EARTH;
-                                mSdData.rawData3D[i + 2] = gravityScaleFactor * rawDataList3D.get(readPosition + 2) / SensorManager.GRAVITY_EARTH;
-                                //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
-                            }
+        try {//
+            // is this a heartbeat event and does it have data?
+            if (!isCharging() || mIsCharging) {
+                if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
+                    int newValue = Math.round(event.values[0]);
+                    //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+                    // only do something if the value differs from the value before and the value is not 0.
+                    if (mSdData.mHR != newValue && newValue != 0) {
+                        // save the new value
+                        mSdData.mHR = newValue;
+                        // add it to the list and computer a new average
+                        if (heartRates.size() == 10) {
+                            heartRates.remove(0);
                         }
-                        rawDataList.clear();
-                        rawDataList3D.clear();
-                        mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
-                        mSdData.mHR = -1;
-                        mSdData.mHRAlarmActive = false;
-                        mSdData.mHRAlarmStanding = false;
-                        mSdData.mHRNullAsAlarm = false;
-                        doAnalysis();
-                        mSdData.mNsamp = 0;
-                        mStartTs = event.timestamp;
-                        return;
-                    } else if (!Objects.equals(rawDataList, null) && rawDataList.size() <= mCurrentMaxSampleCount) {
+                        heartRates.add(curHeart);
+                    }
+                    mSdData.mHRAvg = (int) calculateAverage(heartRates);
+                    if (heartRates.size() < 4) {
+                        mSdData.mHRAvg = 0;
+                    }
+                } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                    // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
+                    if (mMode == 0) {
+                        if (mStartEvent == null) {
+                            Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
+                            Log.v(TAG, "onSensorChanged(): saving initial event data");
+                            mStartEvent = event;
+                            mStartTs = event.timestamp;
+                            mSdData.mNsamp = 0;
+                        } else {
+                            mSdData.mNsamp++;
+                        }
+                        if (mSdData.mNsamp >= mSdDataSettings.mDefaultSampleCount) {
+                            Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
+                            mSdData.dT = 1.0e-9 * (event.timestamp - mStartTs);
+                            mCurrentMaxSampleCount = mSdData.mNsamp;
+                            mSdData.mSampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
+                            mSdData.haveSettings = true;
+                            Log.v(TAG, "onSensorChanged(): Collected data for " + mSdData.dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
+                            accelerationCombined = sqrt(event.values[0] * event.values[0] + event.values[1] * event.values[1] + event.values[2] * event.values[2]);
+                            calculateStaticTimings();
+                            mMode = 1;
+                            mSdData.mNsamp = 0;
+                            mStartTs = event.timestamp;
+                        }
+                    } else if (mMode == 1) {
+                        // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
 
-                        float x = event.values[0];
-                        float y = event.values[1];
-                        float z = event.values[2];
-                        //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                        rawDataList.add(sqrt(x * x + y * y + z * z));
-                        rawDataList3D.add((double) x);
-                        rawDataList3D.add((double) y);
-                        rawDataList3D.add((double) z);
-                        mSdData.mNsamp++;
-                        return;
-                    } else if (mSdData.mNsamp > mCurrentMaxSampleCount - 1) {
-                        Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
-                        return;
-                    } else if (mSdData.mNsamp != rawDataList.size()) {
-                        Log.v(TAG, "onSensorChanged(): mSdData.mNSamp and mCurrentMaxSampleCount differ in size");
-                        mSdData.mNsamp = rawDataList.size();
-                        return;
+                        if (mSdData.mNsamp == mCurrentMaxSampleCount) {
+
+
+                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                            mSdData.dT = 1e-9 * (event.timestamp - mStartTs);
+                            int sampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
+                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+
+                            // DownSample from the **Hz received frequency to 25Hz and convert to mg.
+                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
+                            int readPosition = 1;
+
+                            for (int i = 0; i < Constants.SD_SERVICE_CONSTANTS.defaultSampleCount; i++) {
+                                readPosition = (int) (i / mConversionSampleFactor);
+                                if (readPosition < rawDataList.size()) {
+                                    mSdData.rawData[i] = gravityScaleFactor * rawDataList.get(readPosition) / SensorManager.GRAVITY_EARTH;
+                                    mSdData.rawData3D[i] = gravityScaleFactor * rawDataList3D.get(readPosition) / SensorManager.GRAVITY_EARTH;
+                                    mSdData.rawData3D[i + 1] = gravityScaleFactor * rawDataList3D.get(readPosition + 1) / SensorManager.GRAVITY_EARTH;
+                                    mSdData.rawData3D[i + 2] = gravityScaleFactor * rawDataList3D.get(readPosition + 2) / SensorManager.GRAVITY_EARTH;
+                                    //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
+                                }
+                            }
+                            rawDataList.clear();
+                            rawDataList3D.clear();
+                            mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
+                            mSdData.mHR = -1;
+                            mSdData.mHRAlarmActive = false;
+                            mSdData.mHRAlarmStanding = false;
+                            mSdData.mHRNullAsAlarm = false;
+                            doAnalysis();
+                            mSdData.mNsamp = 0;
+                            mStartTs = event.timestamp;
+                            return;
+                        } else if (!Objects.equals(rawDataList, null) && rawDataList.size() <= mCurrentMaxSampleCount) {
+
+                            float x = event.values[0];
+                            float y = event.values[1];
+                            float z = event.values[2];
+                            //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
+                            rawDataList.add(sqrt(x * x + y * y + z * z));
+                            rawDataList3D.add((double) x);
+                            rawDataList3D.add((double) y);
+                            rawDataList3D.add((double) z);
+                            mSdData.mNsamp++;
+                            return;
+                        } else if (mSdData.mNsamp > mCurrentMaxSampleCount - 1) {
+                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
+                            return;
+                        } else if (mSdData.mNsamp != rawDataList.size()) {
+                            Log.v(TAG, "onSensorChanged(): mSdData.mNSamp and mCurrentMaxSampleCount differ in size");
+                            mSdData.mNsamp = rawDataList.size();
+                            return;
+                        } else {
+                            Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                        }
+
                     } else {
-                        Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                        Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
                     }
 
                 } else {
-                    Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
+                    Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
                 }
+            } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
+        } finally {
+            Parcelable parcelable = mSdData;
+            Parcel parcel = Parcel.obtain();
+            parcelable.writeToParcel(parcel, 0);
+            setProgressAsync(new Data.Builder().putByteArray(Constants.GLOBAL_CONSTANTS.mSdDataPath, parcel.marshall()).build());
+            parcel.recycle();
 
-            } else {
-                Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
-            }
-        } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
+        }
 
     }
 
@@ -1071,7 +1047,7 @@ public class AWSdService extends Service implements SensorEventListener, Message
         if (mSdData.alarmState == 1 || mSdData.alarmState == 2) {
             Intent intent = new Intent(this.getApplicationContext(), StartUpActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(intent);
+            mContext.startActivity(intent);
         }
 
 
@@ -1266,6 +1242,224 @@ public class AWSdService extends Service implements SensorEventListener, Message
     }
 
     /**
+     * Override this method to do your actual background processing.  This method is called on a
+     * background thread - you are required to <b>synchronously</b> do your work and return the
+     * {@link Result} from this method.  Once you return from this
+     * method, the Worker is considered to have finished what its doing and will be destroyed.  If
+     * you need to do your work asynchronously on a thread of your own choice, see
+     * {@link ListenableWorker}.
+     * <p>
+     * A Worker has a well defined
+     * <a href="https://d.android.com/reference/android/app/job/JobScheduler">execution window</a>
+     * to finish its execution and return a {@link Result}.  After
+     * this time has expired, the Worker will be signalled to stop.
+     *
+     * @return The {@link Result} of the computation; note that
+     * dependent work will not execute if you use
+     * {@link Result#failure()} or
+     * {@link Result#failure(Data)}
+     */
+    @NonNull
+    @Override
+    public Result doWork() {
+        intentFromOnStart = getInputData();
+        Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
+        if (batteryStatusIntent == null) bindBatteryEvents();
+
+        if (Objects.equals(allNodes, null)) {
+            if (Objects.equals(mNodeListClient, null))
+                mNodeListClient = Wearable.getNodeClient(mContext);
+            Task getAllNodes = mNodeListClient.getConnectedNodes();
+            getAllNodes.addOnSuccessListener(result -> {
+                allNodes = (List<Node>) result;
+            });
+        }
+
+
+        if (intentFromOnStart != null) {
+            if (Objects.equals(intentFromOnStart.getByteArray(Constants.GLOBAL_CONSTANTS.intentAction), Uri.parse("Start"))) {
+                Log.i(TAG, "Received Start Foreground Intent ");
+                // your start service code
+                try {
+
+                    //if (mTextView != null) mTextView.setText("Service Started");
+                    //if (mTextView != null) mTextView.setText("onStart");
+
+                    // Initialise Notification channel for API level 26 and over
+                    // from https://stackoverflow.com/questions/44443690/notificationcompat-with-api-26
+                    mNM = (NotificationManager) mContext.getSystemService(NOTIFICATION_SERVICE);
+                    String mNotChId = "OSD Notification Channel";
+                    mNotificationBuilder = new NotificationCompat.Builder(mContext, mNotChId);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        NotificationChannel channel = new NotificationChannel(mNotChId,
+                                mNotChName,
+                                NotificationManager.IMPORTANCE_DEFAULT);
+                        String mNotChDesc = "OSD Notification Channel Description";
+                        channel.setDescription(mNotChDesc);
+                        mNM.createNotificationChannel(channel);
+                    }
+
+                    Log.d(TAG, "onStartCommand(): logging before call startForeground");
+                    // Display a notification icon in the status bar of the phone to
+                    // show the service is running.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Log.v(TAG, "showing Notification and calling startForeground (Android 8 and higher)");
+                        if (mNM.areNotificationsEnabled()) showNotification(0);
+                        WorkManager.getInstance(mContext);
+                        this.setForegroundAsync(createForegroundInfo(Constants.GLOBAL_CONSTANTS.mAppPackageName));
+                        ((Service) mContext).startForeground(NOTIFICATION_ID, mNotification);
+                    } else {
+                        Log.v(TAG, "showing Notification");
+                        if (mNM.areNotificationsEnabled()) showNotification(0);
+                    }
+                    // If the notification supports a direct reply action, use
+                    // PendingIntent.FLAG_MUTABLE instead.
+
+                } catch (Exception e) {
+                    Log.e(TAG, " OnCreate - Starting Service failed", e);
+                }
+                Log.v(TAG, "onStartCommand() - populating mNodeList");
+                mNodeListClient = Wearable.getNodeClient(mContext);
+
+                Log.v(TAG, "onStartCommand() - checking permission for sensors and registering");
+
+                if (mSdData.serverOK && !sensorsActive) bindSensorListeners();
+
+
+                //mAccData = new double[NSAMP];
+                // mSdData = new SdData();
+
+                mVibe = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
+
+
+                // Prevent sleeping
+                PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
+                mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
+
+                if (!mWakeLock.isHeld()) {
+                    mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
+                }
+                try {
+                    Wearable.getCapabilityClient(mContext)
+                            .addListener(
+                                    this,
+                                    Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                            );
+                    capabilityClient = Wearable.getCapabilityClient(mContext);
+                    capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);
+                    capabilityClient.addListener(this, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
+                    Wearable.getMessageClient(mContext).addListener(this);
+                    Log.v(TAG, "onRebind()");
+                } catch (Exception e) {
+                    Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+
+                }
+                // Initialise the Google API Client so we can use Android Wear messages.
+                try {
+                    if (mSdData.serverOK) {
+
+                        sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "onStartCommand() ", e);
+                }//Eval cutting From Here Until End Function
+                Timer appStartTimer = new Timer();
+                appStartTimer.schedule(new TimerTask() {
+                                           @Override
+                                           public void run() {
+                                               try {
+                                                   Log.v(TAG, "startWatchApp() - Timer as Timeout, fires if not connected...");
+                                                   if (mNodeListClient instanceof List && !mSdData.serverOK) {
+                                                       Log.v(TAG, "OnStartCommand(): We only get here, if Wear Watch starts OSD first.");
+                                                       List<Node> connectedNodes = mNodeListClient.getConnectedNodes().getResult();
+                                                       if (connectedNodes.size() > 0) {
+                                                           for (Node node : connectedNodes) {
+                                                               Log.d(TAG, "OnStartCommand() - in client for initiation of device Paring with id " + node.getId() + " " + node.getDisplayName());
+                                                               mSdData.watchConnected = true;
+                                                               mSdData.watchAppRunning = true;
+                                                               mSdData.mDataType = "watchConnect";
+                                                               mMobileNodeUri = node.getId();
+                                                               mNodeFullName = node.getDisplayName();
+                                                               sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                                                               //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                                                               // as broadcast to all client watches.
+                                                           }
+                                                       } else {
+                                                           Log.e(TAG, "TimerTask/Run() :  no nodes found");
+                                                       }
+                                                       //try shift
+
+
+                                                   }
+                                               } catch (Exception e) {
+                                                   Log.e(TAG, "onStartCommand() /TimerTask/Run(): Excempted:", e);
+                                               }
+
+                                           }
+
+                                       }
+                        , 5000); //end timerTask
+
+
+            }
+        } else if (Constants.ACTION.STOPFOREGROUND_ACTION.equals(intentFromOnStart.getString(Constants.GLOBAL_CONSTANTS.intentAction)) ||
+                Constants.GLOBAL_CONSTANTS.mStopUri.equals(intentFromOnStart.getString(Constants.GLOBAL_CONSTANTS.intentAction))) {
+            Log.i(TAG, "Received Stop Foreground Intent");
+            //your end servce code
+            unBindSensorListeners();
+            mContext.unregisterReceiver(powerUpdateReceiver);
+            mContext.unregisterReceiver(connectionUpdateReceiver);
+            return Result.success();
+            /*mContext.stopForeground(true);
+            mContext.stopSelfResult(startId);*/
+        }
+        /*if (Objects.equals(intent, null)) return START_NOT_STICKY;
+        return returnFromSuper;*/
+        if (Objects.isNull(mBlockingThread))
+            mBlockingThread = new Thread(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
+        mBlockingThread.start();
+        synchronized (mBlockingThread) {
+            try {
+                mBlockingThread.wait();
+            } catch (InterruptedException interruptedException) {
+                Log.e(this.getClass().getName(), "mBlockingThread interrupted.", interruptedException);
+                return Result.failure();
+            }
+        }
+        return Result.retry();
+    }
+
+
+    @NonNull
+    private ForegroundInfo createForegroundInfo(@NonNull String progress) {
+        // Build a notification using bytesRead and contentLength
+
+        Context context = getApplicationContext();
+        String id = context.getString(R.string.app_name);
+        String title = context.getString(R.string.app_name);
+        String cancel = "Cancel " + context.getString(R.string.app_name);
+        // This PendingIntent can be used to cancel the worker
+        PendingIntent intent = WorkManager.getInstance(context)
+                .createCancelPendingIntent(getId());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            createChannel();
+        }
+
+        Notification notification = new NotificationCompat.Builder(context, id)
+                .setContentTitle(title)
+                .setTicker(title)
+                .setSmallIcon(R.drawable.icon_24x24)
+                .setOngoing(true)
+                // Add the cancel action to the notification which can
+                // be used to cancel the worker
+                .addAction(android.R.drawable.ic_delete, cancel, intent)
+                .build();
+
+        return new ForegroundInfo(Constants.SD_SERVICE_CONSTANTS.defaultSampleCount, notification);
+    }
+
+    /**
      * class to handle binding the MainApp activity to this service
      * so it can access mSdData.
      */
@@ -1279,6 +1473,10 @@ public class AWSdService extends Service implements SensorEventListener, Message
         public AWSdService getService() {
             return AWSdService.this;
         }
+    }
+
+    public class ServiceLiveData extends LiveData {
+
     }
 
 

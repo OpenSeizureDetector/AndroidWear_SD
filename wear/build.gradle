@@ -27,45 +27,55 @@ android {
 }
 
 dependencies {
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0") {
+            because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
+        }
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0") {
+            because("kotlin-stdlib-jdk8 is now a part of kotlin-stdlib")
+        }
+    }
     implementation "androidx.multidex:multidex:2.0.1"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'com.github.wendykierp:JTransforms:3.1'
     implementation 'com.google.android.gms:play-services-wearable:18.0.0'
     implementation compileOnly('com.google.android.support:wearable:2.9.0')
     implementation compileOnly('com.google.android.wearable:wearable:2.9.0')
-    implementation 'androidx.health:health-services-client:1.0.0-beta01'
+    implementation 'androidx.health:health-services-client:1.0.0-beta02'
     implementation 'com.google.android.libraries.healthdata:health-data-api:1.1.0-alpha01'
-    implementation 'androidx.health.connect:connect-client:1.0.0-alpha08'
+    implementation 'androidx.health.connect:connect-client:1.0.0-alpha11'
     implementation 'com.google.android.gms:play-services-fitness:21.1.0'
-    implementation 'com.google.android.gms:play-services-auth:20.4.0'
-
+    implementation 'com.google.android.gms:play-services-auth:20.4.1'
+    implementation 'io.reactivex.rxjava3:rxjava:3.1.6'
+    implementation 'io.reactivex.rxjava3:rxandroid:3.0.2'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.core:core-ktx:1.9.0'
-    implementation "androidx.fragment:fragment-ktx:1.5.5"
+    implementation "androidx.fragment:fragment-ktx:1.5.6"
 
 
     // Wear
     implementation 'androidx.wear:wear:1.2.0'
     // Health Services
-    implementation 'androidx.health:health-services-client:1.0.0-beta01'
+    implementation 'androidx.health:health-services-client:1.0.0-beta02'
     // Used to bridge between Futures and coroutines
-    implementation 'com.google.guava:guava:30.1.1-android'
+    implementation 'com.google.guava:guava:31.1-jre'
     implementation "androidx.concurrent:concurrent-futures-ktx:1.1.0"
 
     // Lifecycle
-    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.5.1"
-    implementation "androidx.lifecycle:lifecycle-service:2.5.1"
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    implementation 'androidx.lifecycle:lifecycle-service:2.6.1'
 
     // Material
-    implementation 'com.google.android.material:material:1.7.0'
+    implementation 'com.google.android.material:material:1.8.0'
 
-    implementation 'androidx.appcompat:appcompat:1.7.0-alpha01'
+    implementation 'androidx.appcompat:appcompat:1.7.0-alpha02'
     implementation 'androidx.preference:preference:1.2.0'
     // Use to implement support for interactions from the Wearables to Phones
     // Use to implement support for interactions between the Wearables and Phones
     implementation "androidx.wear:wear-remote-interactions:1.0.0"
 
     // Work Manager and worker: used instead of Services
-    implementation 'androidx.work:work-runtime:2.8.0'
+    implementation 'androidx.work:work-runtime:2.8.1'
+    implementation 'androidx.work:work-multiprocess:2.8.1'
 
 }

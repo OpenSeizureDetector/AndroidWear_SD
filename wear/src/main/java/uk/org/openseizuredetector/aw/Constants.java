@@ -49,6 +49,7 @@ public class Constants {
         public static String STARTFOREGROUND_ACTION = "uk.org.openseizuredetect.startforeground";
         public static String STOPFOREGROUND_ACTION = "uk.org.openseizuredetect.stopforeground";
         public static String BATTERYUPDATE_ACTION = "uk.org.openseizuredetector.onBatteryUpdate";
+        public static String BIND_ACTION = "uk.org.openseizuredetector.bindAction";
         public static String BROADCAST_TO_WEARRECEIVER = "uk.org.openseizuredetector.aw.broadcastToWearReceiver";
         public static String BROADCAST_TO_SDSERVER = "uk.org.openseizuredetector.broadcastTosdServer";
         public static String CONNECTIONUPDATE_ACTION = "uk.org.openseizuredetector.onConnectionUpdate";

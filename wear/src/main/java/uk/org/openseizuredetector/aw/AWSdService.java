@@ -178,13 +178,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private Observable<SdData> userIoSdDataObservable;
     private Intent applicationIntent = null;
     private Intent intentFromOnStart;
+
     public BroadcastReceiver connectionUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals("com.journaldev.broadcastreceiver.SOME_ACTION"))
-                Toast.makeText(mContext, "SOME_ACTION is received", Toast.LENGTH_LONG).show();
-
-            else if (intent.getAction().equals("android.net.conn.CONNECTIVITY_CHANGE")) {
+            if (intent.getAction().equals("android.net.conn.CONNECTIVITY_CHANGE")) {
                 ConnectivityManager cm =
                         (ConnectivityManager) mContext.getSystemService(mContext.CONNECTIVITY_SERVICE);
 
@@ -203,6 +201,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             }
         }
     };
+
+
     private List<Double> rawDataList;
     private List<Double> rawDataList3D;
     private int mChargingState = 0;
@@ -255,7 +255,6 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         mSdData = new SdData();
         mUtil = new OsdUtil(mContext, mHandler);
         serviceLiveData = new ServiceLiveData();
-        applicationIntent = intent;
 
 
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
@@ -617,7 +616,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private int getNotificationIcon() {
         boolean useWhiteIcon = (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP);
-        return useWhiteIcon ? R.drawable.googleg_standard_color_18 : R.drawable.star_of_life_24x24;
+        return useWhiteIcon ? R.drawable.star_of_life_24x24 : R.drawable.icon_24x24;
     }
 
     @Override
@@ -752,11 +751,12 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         Node changedNode = null;
         try {
             changedNodeSet = capabilityInfo.getNodes();
+
             if (changedNodeSet.size() > 0) {
                 Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
                 changedNode = changedNodeSet.stream().findFirst().get();
 
-                if (capabilityInfo.equals(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver)) {
+                if (!"is_connection_lost".equals(capabilityInfo.getName())) {
                     if (capabilityInfo.equals(Uri.parse("wear://"))) {
                         mMobileNodesWithCompatibility = capabilityInfo;
                     }
@@ -970,6 +970,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         batteryStatusIntent = mContext.registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
         mContext.registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
 
+
     }
 
     public BroadcastReceiver powerUpdateReceiver = new BroadcastReceiver() {
@@ -1061,6 +1062,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     );
             Wearable.getMessageClient(mContext).addListener(this);
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+
 
         } catch (Exception e) {
             Log.e(TAG, "onBind(): Error in reloading vars ", e);

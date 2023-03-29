@@ -23,6 +23,7 @@ public class Constants {
         public final String mAppPackageName = "uk.org.openseizuredetector";
         public final String mAppPackageNameWearReceiver = "uk.org.openseizuredetector.aw";
         public final String mAppPackageNameWearSD = "uk.org.openseizuredetector.aw";
+        public final String mServiceWearSdName = "uk.org.openseizuredetector.aw.AWSdService";
         public final Uri mStartUri = Uri.parse("Start");
         public final Uri mStopUri = Uri.parse("Stop");
         public final Uri mPASSUri = Uri.parse("PASS");

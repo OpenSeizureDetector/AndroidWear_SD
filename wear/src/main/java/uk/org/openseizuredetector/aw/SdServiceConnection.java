@@ -54,6 +54,7 @@ public class SdServiceConnection implements ServiceConnection {
         mBound = true;
         if (mAWSdService != null) {
             Log.v(TAG, "onServiceConnected() - Asking server to update its settings");
+            mAWSdService.serviceLiveData.signalChangedData();
         } else {
             Log.v(TAG, "onServiceConnected() - mSdServer is null - this is wrong!");
         }

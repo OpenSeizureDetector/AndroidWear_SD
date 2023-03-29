@@ -287,6 +287,16 @@ public class StartUpActivity extends AppCompatActivity
 
         try {
 
+            if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
+                ActivityCompat.requestPermissions(mGetActivity(this),
+                        new String[]{Manifest.permission.BODY_SENSORS},
+                        PERMISSION_REQUEST_BODY_SENSORS);
+
+            } else {
+                Log.d(TAG, "ALREADY GRANTED");
+            }
+
             if (!mUtil.isServerRunning()) {
                 Log.i(TAG, "onStart() - server not running - isServerRunning=" + mUtil.isServerRunning());
                 // Wait 0.1 second to give the server chance to shutdown in case we have just shut it down below, then start it
@@ -297,7 +307,7 @@ public class StartUpActivity extends AppCompatActivity
                 Log.i(TAG, "onStart() - binding to server");
                 RemoteIntent.startRemoteActivity(mContext, new Intent(Intent.ACTION_VIEW)
                         .addCategory(Intent.CATEGORY_BROWSABLE)
-                        .setData(Uri.parse(Constants.ACTION.STARTFOREGROUND_ACTION + "://.wear.StartUpActivity")), null);
+                        .setData(Uri.parse(Constants.ACTION.STARTFOREGROUND_ACTION)), null);
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
                 if (mTextView != null)
@@ -329,7 +339,7 @@ public class StartUpActivity extends AppCompatActivity
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
             }
             if (mConnection.mAWSdService != null) {
-                mConnection.mAWSdService.serviceLiveData.observe(this, this::onChangedObserver);
+                mHandler.postDelayed(this::bindRetry, 100);
                 if (mConnection.mAWSdService.mSdData != null) {
 
                     if (!mConnection.mAWSdService.mSdData.serverOK) {
@@ -344,15 +354,7 @@ public class StartUpActivity extends AppCompatActivity
                 //if (mContext == null) mContext = this;
                 //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
                 //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
-                if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                    ActivityCompat.requestPermissions(mGetActivity(this),
-                            new String[]{Manifest.permission.BODY_SENSORS},
-                            PERMISSION_REQUEST_BODY_SENSORS);
 
-                } else {
-                    Log.d(TAG, "ALREADY GRANTED");
-                }
 
 
         } catch (Exception e) {
@@ -394,7 +396,7 @@ public class StartUpActivity extends AppCompatActivity
         if (!mUtil.isServerRunning())
             mUtil.startServer();
         mUtil.bindToServer(mContext, mConnection);
-        mHandler.postDelayed(() -> bindRetry(), 100);
+        mHandler.postDelayed(this::bindRetry, 100);
         //mUiTimer = new Timer();
         //TODO: disable update after test
         //mUiTimer.schedule(new updateUiTask(), 0, 500);

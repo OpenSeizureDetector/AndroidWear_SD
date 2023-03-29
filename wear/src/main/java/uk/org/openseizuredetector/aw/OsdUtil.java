@@ -98,7 +98,7 @@ public class OsdUtil {
         for (ActivityManager.RunningServiceInfo service :
                 manager.getRunningServices(Integer.MAX_VALUE)) {
             //Log.v(TAG,"Service: "+service.service.getClassName());
-            if ("uk.org.openseizuredetector.SdServer"
+            if (Constants.GLOBAL_CONSTANTS.mServiceWearSdName
                     .equals(service.service.getClassName())) {
                 nServers = nServers + 1;
             }

@@ -712,14 +712,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             }
         } else if (!messageEventPath.isEmpty() && Objects.equals(messageEventPath, Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_REQUESTED)) {
             try {
-                Log.v(TAG, "onMessageReived() : if receivedData ");
+                Log.v(TAG, "onMessageReceived() : if receivedData ");
 
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
                 mSdData.haveData = true;
 
-                //TODO: Deside what to do with the population of id and name. Nou this is being treated
+                //TODO: Decide what to do with the population of id and name. Nou this is being treated
                 // as broadcast to all client watches.
 
                 sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
@@ -755,17 +755,20 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             if (changedNodeSet.size() > 0) {
                 Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
                 changedNode = changedNodeSet.stream().findFirst().get();
+                mMobileNodesWithCompatibility = capabilityInfo;
 
                 if (!"is_connection_lost".equals(capabilityInfo.getName())) {
-                    if (capabilityInfo.equals(Uri.parse("wear://"))) {
-                        mMobileNodesWithCompatibility = capabilityInfo;
-                    }
+
                     if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
                         mSdData.watchConnected = true;
-                        mSdData.serverOK = true;
                         bindSensorListeners();
                     }
+                } else {
+                    mSdData.serverOK = false;
+                    mSdData.watchConnected = false;
+                    unBindSensorListeners();
                 }
+
             } else {
                 Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
                 mSdData.watchConnected = false;

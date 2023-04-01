@@ -353,8 +353,7 @@ public class StartUpActivity extends AppCompatActivity
             }
                 //if (mContext == null) mContext = this;
                 //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
-                //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
-
+            //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
 
 
         } catch (Exception e) {
@@ -364,6 +363,12 @@ public class StartUpActivity extends AppCompatActivity
 
     }
 
+    /**
+     * onChangedObserver is responsible for handling LiveData changed event
+     * (this.postValue(mSdData)
+     * result here is (SdData) from Object o.
+     * Source event line: AWSdService:ServiceLiveData:signalChangedData()
+     */
     private void onChangedObserver(Object o) {
         try {
             mSdData = (SdData) o;

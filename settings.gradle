@@ -1,1 +1,2 @@
 include ':wear'
+include ':benchmark'

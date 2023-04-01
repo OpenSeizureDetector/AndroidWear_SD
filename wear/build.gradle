@@ -10,7 +10,7 @@ android {
         targetSdkVersion 31
         multiDexEnabled true
         versionCode 1
-        versionName '1.0.0b'
+        versionName '1.0.0c'
         testFunctionalTest true
         testHandleProfiling true
     }
@@ -22,6 +22,11 @@ android {
         debug {
             applicationIdSuffix = ""
             signingConfig signingConfigs.debug
+        }
+        benchmark {
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+            debuggable false
         }
     }
 }
@@ -35,6 +40,7 @@ dependencies {
             because("kotlin-stdlib-jdk8 is now a part of kotlin-stdlib")
         }
     }
+    implementation 'androidx.benchmark:benchmark-macro-junit4:1.1.1'
     implementation "androidx.multidex:multidex:2.0.1"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'com.github.wendykierp:JTransforms:3.1'

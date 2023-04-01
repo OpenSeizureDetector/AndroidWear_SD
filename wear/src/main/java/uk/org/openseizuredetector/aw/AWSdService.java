@@ -274,13 +274,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         else return START_NOT_STICKY;
 
         if (!Constants.ACTION.BIND_ACTION.equals(intent.getAction())) {
-            createNotificationChannel();
+            //createNotificationChannel();
             //prepareAndStartForeground();
             //mStartForegroundService(intent);
-            showNotification(0);
-            mStartForegroundService(intent);
+            //prepareAndStartForeground();
+            //mStartForegroundService(intent);
 
             mHandler.post(() -> serviceRunner(intent));
+            //showNotification(0);
         }
         return super.onStartCommand(intent, flags, startId);
     }
@@ -289,7 +290,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         if (Objects.isNull(intentFromOnStart)) intentFromOnStart = intent;
 
         if (intentFromOnStart != null) {
-            if (Uri.parse("Start").equals(intentFromOnStart.getBundleExtra(Constants.GLOBAL_CONSTANTS.intentAction))) {
+            if (Constants.GLOBAL_CONSTANTS.mStartUri.equals(intentFromOnStart.getData())) {
                 Log.i(TAG, "Received Start Foreground Intent ");
                 // your start service code
                 try {
@@ -595,7 +596,6 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             NotificationCompat.WearableExtender extender = new NotificationCompat.WearableExtender();
 //            extender.setBackground(BitmapFactory.decodeResource(mContext.getResources(), R.drawable.card_background));
 //            extender.setContentIcon(R.drawable.icon_24x24);
-            extender.setHintHideIcon(true);
             extender.extend(builder);
 
             builder.setPriority(NotificationCompat.PRIORITY_LOW);
@@ -692,6 +692,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
             try {
                 mSdData.fromJSON(s1);
+                mSdDataSettings = mSdData;
                 prefValHrAlarmActive = mSdData.mHRAlarmActive;
                 if (!Objects.equals(mNodeFullName, null))
                     if (mNodeFullName.isEmpty()) {
@@ -734,6 +735,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 sdData.fromJSON(s1);
                 if (sdData.serverOK) {
                     mSdData = sdData;
+                    mSdDataSettings = sdData;
                 }
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);
@@ -747,27 +749,28 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     @Override
     public void onCapabilityChanged(CapabilityInfo capabilityInfo) {
         Log.d(TAG, "CapabilityInfo received: " + capabilityInfo.toString());
-        Set<Node> changedNodeSet = null;
+        Set<Node> changedNodeSet = capabilityInfo.getNodes();
         Node changedNode = null;
         try {
-            changedNodeSet = capabilityInfo.getNodes();
-
-            if (changedNodeSet.size() > 0) {
-                Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
+            if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver.equalsIgnoreCase(capabilityInfo.getName())) {
+                Log.v(TAG, "Received: " + capabilityInfo.getName());
+                if (changedNodeSet.size() == 0) return;
                 changedNode = changedNodeSet.stream().findFirst().get();
                 mMobileNodesWithCompatibility = capabilityInfo;
-
-                if (!"is_connection_lost".equals(capabilityInfo.getName())) {
-
-                    if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
-                        mSdData.watchConnected = true;
-                        bindSensorListeners();
-                    }
-                } else {
-                    mSdData.serverOK = false;
-                    mSdData.watchConnected = false;
-                    unBindSensorListeners();
+                if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
+                    mSdData.watchConnected = true;
+                    bindSensorListeners();
                 }
+            }
+            if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD.equalsIgnoreCase(capabilityInfo.getName())) {
+                Log.v(TAG, "Received: " + capabilityInfo.getName());
+                if (changedNodeSet.size() == 0) return;
+            }
+
+            if ("is_connection_lost".equals(capabilityInfo.getName())) {
+                mSdData.serverOK = false;
+                mSdData.watchConnected = false;
+                unBindSensorListeners();
 
             } else {
                 Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
@@ -823,15 +826,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         // default sampleCount : mSdData.mDefaultSampleCount
         // default sampleTime  : mSdData.analysisPeriod
         // sampleFrequency = sampleCount / sampleTime:
-        if (Double.isNaN(mSdData.mSampleFreq) || Double.isInfinite(mSdData.mSampleFreq) || mSdData.mSampleFreq == 0 || mSdData.analysisPeriod == 0) {
+        if (Double.isNaN(mSampleTimeUs) || Double.isInfinite(mSdData.mSampleFreq) || mSdData.mSampleFreq == 0 || mSdData.analysisPeriod == 0) {
             mSdData.mSampleFreq = Constants.SD_SERVICE_CONSTANTS.defaultSampleRate;
             mSdData.analysisPeriod = Constants.SD_SERVICE_CONSTANTS.defaultSampleTime;
+            mSdData.mDefaultSampleCount = (int) (mSdData.mSampleFreq * mSdData.analysisPeriod);
         }
-        mSdData.mSampleFreq = (long) mSdData.mDefaultSampleCount / mSdData.analysisPeriod;
 
+        mSdData.mSampleFreq = (long) mSdData.mDefaultSampleCount / mSdData.analysisPeriod;
         // now we have mSampleFreq in number samples / second (Hz) as default.
         // to calculate sampleTimeUs: (1 / mSampleFreq) * 1000 [1s == 1000000us]
-        mSampleTimeUs = (1 / mSdData.mSampleFreq) * 1000;
+        mSampleTimeUs = (1d / (double) mSdData.mSampleFreq) * 1e6d;
 
         // num samples == fixed final 250 (NSAMP)
         // time seconds in default == 10 (SIMPLE_SPEC_FMAX)
@@ -948,14 +952,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     if (sensorsActive && batteryPct < 15f)
                         unBindSensorListeners();
                 }
-                mUtil.runOnUiThread(() -> {
-                    if (Objects.nonNull(serviceLiveData))
-                        if (serviceLiveData.hasActiveObservers())
-                            serviceLiveData.signalChangedData();
-                    Log.d(TAG, "onBatteryChanged(): runOnUiThread(): updateUI");
+                if (mBound) {
+                    mUtil.runOnUiThread(() -> {
+                        if (Objects.nonNull(serviceLiveData))
+                            if (serviceLiveData.hasActiveObservers())
+                                serviceLiveData.signalChangedData();
+                        Log.d(TAG, "onBatteryChanged(): runOnUiThread(): updateUI");
 
-                });
+                    });
 
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "powerUpdateReceiveAction() : error in type", e);
@@ -1078,6 +1084,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     @Override
     public boolean onUnbind(Intent intent) {
         Log.v(TAG, "onUnbind()");
+
         mBound = false;
         if (Objects.nonNull(notificationManager) && !Constants.ACTION.BIND_ACTION.equals(intent.getAction()) && Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mSdData.mDataType))
             notificationManager.notify(TAG, channelIDs.lastIndexOf(channelIDs), mNotification);
@@ -1130,25 +1137,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     public void onSensorChanged(SensorEvent event) {
         try {//
             // is this a heartbeat event and does it have data?
-            if (!isCharging() || mIsCharging) {
-                if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
-                    int newValue = Math.round(event.values[0]);
-                    //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
-                    // only do something if the value differs from the value before and the value is not 0.
-                    if (mSdData.mHR != newValue && newValue != 0) {
-                        // save the new value
-                        mSdData.mHR = newValue;
-                        // add it to the list and computer a new average
-                        if (heartRates.size() == 10) {
-                            heartRates.remove(0);
-                        }
-                        heartRates.add(curHeart);
-                    }
-                    mSdData.mHRAvg = (int) calculateAverage(heartRates);
-                    if (heartRates.size() < 4) {
-                        mSdData.mHRAvg = 0;
-                    }
-                } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            if (Objects.nonNull(mSdDataSettings)) if ((!isCharging() || mIsCharging)) {
+                if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
                     // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
                     if (mMode == 0) {
                         if (mStartEvent == null) {
@@ -1204,14 +1194,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             rawDataList.clear();
                             rawDataList3D.clear();
                             mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
-                            mSdData.mHR = -1;
+                            mSdData.mHR = -1d;
                             mSdData.mHRAlarmActive = false;
                             mSdData.mHRAlarmStanding = false;
                             mSdData.mHRNullAsAlarm = false;
                             doAnalysis();
                             mSdData.mNsamp = 0;
                             mStartTs = event.timestamp;
-
+                            return;
                         } else if (!Objects.equals(rawDataList, null) && rawDataList.size() <= mCurrentMaxSampleCount) {
 
                             float x = event.values[0];
@@ -1223,14 +1213,17 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             rawDataList3D.add((double) y);
                             rawDataList3D.add((double) z);
                             mSdData.mNsamp++;
-
+                            return;
                         } else if (mSdData.mNsamp > mCurrentMaxSampleCount - 1) {
                             Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
-
-                        } else if (mSdData.mNsamp != rawDataList.size()) {
+                            return;
+                        } else if (rawDataList.size() >= mCurrentMaxSampleCount) {
                             Log.v(TAG, "onSensorChanged(): mSdData.mNSamp and mCurrentMaxSampleCount differ in size");
-                            mSdData.mNsamp = rawDataList.size();
-
+                            rawDataList.remove(0);
+                            rawDataList3D.remove(0);
+                            rawDataList3D.remove(0);
+                            rawDataList3D.remove(0);
+                            return;
                         } else {
                             Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
                         }
@@ -1238,13 +1231,10 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     } else {
                         Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
                     }
-
-                } else {
-                    Log.d(TAG + "SensorResult", String.valueOf(mSensor.getType()));
                 }
             } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
         } finally {
-            mUtil.runOnUiThread(() -> {
+            if (mBound) mUtil.runOnUiThread(() -> {
                 if (Objects.nonNull(serviceLiveData))
                     if (serviceLiveData.hasActiveObservers())
                         serviceLiveData.signalChangedData();
@@ -1590,12 +1580,30 @@ if (Objects.equals(intent, null)) return START_NOT_STICKY;
         }
     }
 
+    /**
+     * class to handle signaling listening Service of changed data.
+     * binding Activity has to subscribe using:
+     * serviceLiveData.observe(this, this::onChangedObserver);
+     * this can also be used for events from binding Activity to
+     * Service calls.
+     */
     public class ServiceLiveData extends LiveData {
-        private boolean signalChangedData = false;
 
         public void signalChangedData() {
             this.postValue(mSdData);
         }
+
+        /*
+
+         * 1: create Intent ,
+         * 2: start service with intent,
+         * 3: bind started Service,
+         * 4: assign ServiceLiveData,
+         * 5: observe ServiceLiveData from binding Activity and from service
+         * */
+
+        //TODO: clean redundant code: replace intent actions with ServiceLiveData
+        // Try to change Pebble_SD -> WearReceiver  
     }
 
 

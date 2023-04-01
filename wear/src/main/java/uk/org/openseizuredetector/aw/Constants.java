@@ -47,8 +47,8 @@ public class Constants {
     }
 
     public interface ACTION {
-        public static String STARTFOREGROUND_ACTION = "uk.org.openseizuredetect.startforeground";
-        public static String STOPFOREGROUND_ACTION = "uk.org.openseizuredetect.stopforeground";
+        public static String STARTFOREGROUND_ACTION = "uk.org.openseizuredetector.startforeground";
+        public static String STOPFOREGROUND_ACTION = "uk.org.openseizuredetector.stopforeground";
         public static String BATTERYUPDATE_ACTION = "uk.org.openseizuredetector.onBatteryUpdate";
         public static String BIND_ACTION = "uk.org.openseizuredetector.bindAction";
         public static String BROADCAST_TO_WEARRECEIVER = "uk.org.openseizuredetector.aw.broadcastToWearReceiver";

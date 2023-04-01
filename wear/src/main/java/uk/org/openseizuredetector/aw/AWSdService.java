@@ -693,6 +693,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             try {
                 mSdData.fromJSON(s1);
                 mSdDataSettings = mSdData;
+                calculateStaticTimings();
                 prefValHrAlarmActive = mSdData.mHRAlarmActive;
                 if (!Objects.equals(mNodeFullName, null))
                     if (mNodeFullName.isEmpty()) {
@@ -736,6 +737,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 if (sdData.serverOK) {
                     mSdData = sdData;
                     mSdDataSettings = sdData;
+                    calculateStaticTimings();
                 }
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);

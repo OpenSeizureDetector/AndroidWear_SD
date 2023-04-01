@@ -621,7 +621,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     @Override
     public void onMessageReceived(MessageEvent messageEvent) {
-        if (mSdData == null) mSdData = new SdData();
+        if (mSdData == null)
+            mSdData = new SdData();
         if (Objects.equals(allNodes, null) ||
                 allNodes.size() == 0) {
             Task<List<Node>> getAllNodes = mNodeListClient.getConnectedNodes();
@@ -685,6 +686,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             //TODO
         } else if ((!messageEventPath.isEmpty()) && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
             if (sensorsActive) unBindSensorListeners();
+            calculateStaticTimings();
             bindSensorListeners();
             //TODO
         } else if (!messageEventPath.isEmpty() && Constants.ACTION.PUSH_SETTINGS_ACTION.equals(messageEventPath)) {

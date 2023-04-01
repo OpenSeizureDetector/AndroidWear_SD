@@ -734,11 +734,12 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             try {
                 SdData sdData = new SdData();
                 sdData.fromJSON(s1);
-                if (sdData.serverOK) {
-                    mSdData = sdData;
-                    mSdDataSettings = sdData;
-                    calculateStaticTimings();
-                }
+                sdData.serverOK = true;
+
+                mSdData = sdData;
+                mSdDataSettings = sdData;
+                calculateStaticTimings();
+
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);
             }

@@ -161,6 +161,12 @@ public class SdData<T> implements Parcelable {
             // FIXME - this doesn't work!!!
             dataTime.setToNow();
             Log.v(TAG, "fromJSON(): dataTime = " + dataTime.toString());
+            try {
+                mDataType = jo.optString("dataType");
+            } catch (Exception e) {
+                Log.d(TAG, "Error in FromJSon: ", e);
+                mDataType = Constants.GLOBAL_CONSTANTS.dataTypeRaw;
+            }
             if (Constants.GLOBAL_CONSTANTS.dataTypeSettings.equals(mDataType)) {
                 mDefaultSampleCount = jo.optInt("defaultSampleCount");
                 batteryPc = jo.optInt("batteryPc");
@@ -179,7 +185,6 @@ public class SdData<T> implements Parcelable {
                 mHRAlarmStanding = jo.optBoolean("hrAlarmStanding");
                 mHRThreshMax = jo.optDouble("hrThreshMax");
                 mHRThreshMin = jo.optDouble("hrThreshMin");
-                mDataType = jo.optString("dataType");
                 phoneName = jo.optString("phoneName");
 
             }
@@ -385,6 +390,7 @@ public class SdData<T> implements Parcelable {
             jsonObj.put("hrThreshMin", mHRThreshMin);
             jsonObj.put("hrThreshMax", mHRThreshMax);
             jsonObj.put("hr", mHR);
+            jsonObj.put("HR", mHR);
             jsonObj.put("o2SatAlarmActive", mO2SatAlarmActive);
             jsonObj.put("o2SatAlarmStanding", mO2SatAlarmStanding);
             jsonObj.put("o2SatThreshMin", mO2SatThreshMin);

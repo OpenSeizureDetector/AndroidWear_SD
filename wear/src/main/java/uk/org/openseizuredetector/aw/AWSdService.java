@@ -33,7 +33,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Vibrator;
-import android.text.format.Time;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -214,11 +213,24 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private IntentFilter batteryStatusIntentFilter = null;
     private Intent batteryStatusIntent;
     private Thread mBlockingThread = null;
+    private PowerUpdateReceiver powerUpdateReceiver = null;
+    private PowerUpdateReceiver powerUpdateReceiverPowerConnected = null;
+    private PowerUpdateReceiver powerUpdateReceiverPowerDisConnected = null;
+    private PowerUpdateReceiver powerUpdateReceiverPowerUpdated = null;
+    private PowerUpdateReceiver powerUpdateReceiverPowerLow = null;
+    private PowerUpdateReceiver powerUpdateReceiverPowerOkay = null;
 
     public AWSdService() {
         super();
 
         mContext = this;
+        powerUpdateReceiver = new PowerUpdateReceiver();
+        powerUpdateReceiverPowerConnected = new PowerUpdateReceiver();
+        powerUpdateReceiverPowerDisConnected = new PowerUpdateReceiver();
+        powerUpdateReceiverPowerOkay = new PowerUpdateReceiver();
+        powerUpdateReceiverPowerLow = new PowerUpdateReceiver();
+        powerUpdateReceiverPowerUpdated = new PowerUpdateReceiver();
+
     }
 
 
@@ -252,13 +264,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         }
 
         mHandler = new Handler(Looper.getMainLooper());
-        mSdData = new SdData();
+        if (Objects.isNull(mSdData)) mSdData = new SdData();
         mUtil = new OsdUtil(mContext, mHandler);
         serviceLiveData = new ServiceLiveData();
 
 
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
-        if (batteryStatusIntent == null) bindBatteryEvents();
+
+        if (powerUpdateReceiver.isRegistered && Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
+            unBindBatteryEvents();
+        bindBatteryEvents();
 
         if (Objects.equals(allNodes, null)) {
             if (Objects.equals(mNodeListClient, null))
@@ -415,13 +430,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
 
             }
-        } else if (Constants.ACTION.STOPFOREGROUND_ACTION.equals(intentFromOnStart.getStringExtra(Constants.GLOBAL_CONSTANTS.intentAction)) ||
+        } else if (Constants.ACTION.STOPFOREGROUND_ACTION.equals(intentFromOnStart.getAction()) ||
                 Constants.GLOBAL_CONSTANTS.mStopUri.equals(intentFromOnStart.getData()) ||
                 Constants.ACTION.STOP_WEAR_SD_ACTION.equals(intentFromOnStart.getAction())) {
             Log.i(TAG, "Received Stop Foreground Intent");
             //your end servce code
             unBindSensorListeners();
-            mContext.unregisterReceiver(powerUpdateReceiver);
+            powerUpdateReceiver.unregister(mContext);
             mContext.unregisterReceiver(connectionUpdateReceiver);
             stopSelf();
             stopForeground(true);
@@ -705,6 +720,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mSdData.haveSettings = true;
                 mSdData.watchAppRunning = true;
                 mSdData.watchConnected = true;
+                mSdData.serverOK = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
 
@@ -764,7 +780,6 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mMobileNodesWithCompatibility = capabilityInfo;
                 if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
                     mSdData.watchConnected = true;
-                    bindSensorListeners();
                 }
             }
             if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD.equalsIgnoreCase(capabilityInfo.getName())) {
@@ -780,7 +795,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             } else {
                 Log.d(TAG, "onCapabilityChanged(): count of set changedCapabilities: " + changedNodeSet.size());
                 mSdData.watchConnected = false;
-                mSdData.serverOK = false;
+                //mSdData.serverOK = false;
             }
         } catch (Exception e) {
             Log.e(TAG, "onCapabilityChanged(): error", e);
@@ -831,13 +846,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         // default sampleCount : mSdData.mDefaultSampleCount
         // default sampleTime  : mSdData.analysisPeriod
         // sampleFrequency = sampleCount / sampleTime:
-        if (Double.isNaN(mSampleTimeUs) || Double.isInfinite(mSdData.mSampleFreq) || mSdData.mSampleFreq == 0 || mSdData.analysisPeriod == 0) {
-            mSdData.mSampleFreq = Constants.SD_SERVICE_CONSTANTS.defaultSampleRate;
-            mSdData.analysisPeriod = Constants.SD_SERVICE_CONSTANTS.defaultSampleTime;
-            mSdData.mDefaultSampleCount = (int) (mSdData.mSampleFreq * mSdData.analysisPeriod);
-        }
+        mSdData.mSampleFreq = (long) mCurrentMaxSampleCount / mSdDataSettings.analysisPeriod;
 
-        mSdData.mSampleFreq = (long) mSdData.mDefaultSampleCount / mSdData.analysisPeriod;
         // now we have mSampleFreq in number samples / second (Hz) as default.
         // to calculate sampleTimeUs: (1 / mSampleFreq) * 1000 [1s == 1000000us]
         mSampleTimeUs = (1d / (double) mSdData.mSampleFreq) * 1e6d;
@@ -849,8 +859,19 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         // 25 Hz == 0,04s
         // 1s == 1.000.000 us (sample interval)
         // sampleTime = 40.000 uS == (SampleTime (s) * 1000)
-        double mSDDataSampleTimeUs = (double) (mSdData.mNsamp / dT) * 1000f;
-        conversionSampleFactor = mSampleTimeUs / mSDDataSampleTimeUs;
+        if (mSdDataSettings.rawData.length > 0 && mSdDataSettings.dT > 0d) {
+            double mSDDataSampleTimeUs = 1d / (double) (Constants.SD_SERVICE_CONSTANTS.defaultSampleCount / Constants.SD_SERVICE_CONSTANTS.defaultSampleTime) * 1.0e6;
+            mConversionSampleFactor = mSampleTimeUs / mSDDataSampleTimeUs;
+        } else
+            mConversionSampleFactor = 1d;
+        if (accelerationCombined != -1d) {
+            gravityScaleFactor = (Math.round(accelerationCombined / SensorManager.GRAVITY_EARTH) % 10d);
+
+        } else {
+            gravityScaleFactor = 1d;
+        }
+        miliGravityScaleFactor = gravityScaleFactor * 1e3;
+
     }
 
     public void bindSensorListeners() {
@@ -891,10 +912,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
             mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
             sensorsActive = true;
-            if (batteryStatusIntent == null) {
-                bindBatteryEvents();
+            if (powerUpdateReceiver.isRegistered)
+                unBindBatteryEvents();
+            bindBatteryEvents();
 
-            }
+
         } catch (Exception e) {
             Log.e(TAG, "bindSensorListners(): Sensor declaration excepted: ", e);
         }
@@ -902,11 +924,25 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private void unBindSensorListeners() {
         mSensorManager.unregisterListener(this);
-        sensorsActive = false;
+    }
+
+    private void unBindBatteryEvents() {
+
+        powerUpdateReceiverPowerLow.unregister(mContext);
+        powerUpdateReceiverPowerUpdated.unregister(mContext);
+        powerUpdateReceiver.unregister(mContext);
+        batteryStatusIntent = null;
+        powerUpdateReceiverPowerOkay.unregister(mContext);
+        powerUpdateReceiverPowerConnected.unregister(mContext);
+        powerUpdateReceiverPowerDisConnected.unregister(mContext);
+        if (Objects.nonNull(connectionUpdateReceiver))
+            mContext.unregisterReceiver(connectionUpdateReceiver);
+        connectionUpdateReceiver = null;
     }
 
     protected void powerUpdateReceiveAction(Intent intent) {
         try {
+            mBound = serviceLiveData.hasActiveObservers(); // change out global mbound with serviceLiveData.hasActiveObservers())
             if (intent.getAction() != null) {
                 Log.d(TAG, "onReceive(): Received action:  " + intent.getAction());
                 // Are we charging / charged?
@@ -931,9 +967,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
                 if (intent.getAction().equals(Intent.ACTION_BATTERY_CHANGED)) {
                     if (Objects.isNull(batteryStatusIntent)) return;
-                    int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                    int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 
-                    int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                    int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
                     batteryPct = 100 * level / (float) scale;
                     mSdData.batteryPc = (int) (batteryPct);
 
@@ -977,23 +1013,20 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private void bindBatteryEvents() {
         batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
-        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
-        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_LOW));
-        mContext.registerReceiver(powerUpdateReceiver, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
-        batteryStatusIntent = mContext.registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
-        mContext.registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
+        if (Objects.isNull(batteryStatusIntent))
+            batteryStatusIntent = mContext.registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
+        powerUpdateReceiverPowerConnected.register(mContext, new IntentFilter(Intent.ACTION_POWER_CONNECTED));
+        powerUpdateReceiverPowerDisConnected.register(mContext, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        powerUpdateReceiverPowerOkay.register(mContext, new IntentFilter(Intent.ACTION_BATTERY_LOW));
+        powerUpdateReceiverPowerLow.register(mContext, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
+        powerUpdateReceiverPowerUpdated.register(mContext, batteryStatusIntentFilter);
+        if (Objects.isNull(connectionUpdateReceiver))
+            mContext.registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
 
 
     }
 
-    public BroadcastReceiver powerUpdateReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            powerUpdateReceiveAction(intent);
-        }
 
-    };
 
 
     public void setReceiverAndUpdateMobileUri() {
@@ -1076,6 +1109,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     );
             Wearable.getMessageClient(mContext).addListener(this);
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
+            if (powerUpdateReceiver.isRegistered) unBindBatteryEvents();
+            bindBatteryEvents();
 
 
         } catch (Exception e) {
@@ -1110,6 +1145,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             Wearable.getMessageClient(mContext).removeListener(this);
             Wearable.getCapabilityClient(mContext).removeListener(this);
             if (mWakeLock != null) if (mWakeLock.isHeld()) mWakeLock.release();
+            if (powerUpdateReceiver.isRegistered)
+                powerUpdateReceiver.unregister(mContext);
         } catch (Exception e) {
             Log.e(TAG, "onDestroy(): error unregistering", e);
         }
@@ -1129,6 +1166,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
             Wearable.getMessageClient(mContext).addListener(this);
+            if (powerUpdateReceiver.isRegistered) unBindBatteryEvents();
+            bindBatteryEvents();
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
             mBound = true;
         } catch (Exception e) {
@@ -1142,8 +1181,37 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     public void onSensorChanged(SensorEvent event) {
         try {//
             // is this a heartbeat event and does it have data?
+            if (!powerUpdateReceiver.isRegistered)
+                bindBatteryEvents();
+            if (mSdData.batteryPc == 0 && Objects.nonNull(batteryStatusIntent)) {
+                int level = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+
+                int scale = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                batteryPct = 100 * level / (float) scale;
+                mSdData.batteryPc = (int) (batteryPct);
+            }
             if (Objects.nonNull(mSdDataSettings)) if ((!isCharging() || mIsCharging)) {
-                if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                if (Objects.isNull(rawDataList)) rawDataList = new ArrayList<>();
+                if (Objects.isNull(rawDataList3D)) rawDataList3D = new ArrayList<>();
+                if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
+                    int newValue = Math.round(event.values[0]);
+                    //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+                    // only do something if the value differs from the value before and the value is not 0.
+                    if (mSdData.mHR != newValue && newValue != 0) {
+                        // save the new value
+                        mSdData.mHR = newValue;
+                        // add it to the list and computer a new average
+                        if (heartRates.size() == 10) {
+                            heartRates.remove(0);
+                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                        }
+                        heartRates.add(curHeart);
+                    }
+                    mSdData.mHRAvg = (int) calculateAverage(heartRates);
+                    if (heartRates.size() < 4) {
+                        mSdData.mHRAvg = 0;
+                    }
+                } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
                     // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
                     if (mMode == 0) {
                         if (mStartEvent == null) {
@@ -1199,11 +1267,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             rawDataList.clear();
                             rawDataList3D.clear();
                             mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
-                            mSdData.mHR = -1d;
-                            mSdData.mHRAlarmActive = false;
-                            mSdData.mHRAlarmStanding = false;
-                            mSdData.mHRNullAsAlarm = false;
                             doAnalysis();
+                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                             mSdData.mNsamp = 0;
                             mStartTs = event.timestamp;
                             return;
@@ -1317,95 +1382,91 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
      * and populate the output data structure mSdData
      */
     private void doAnalysis() {
-        double nMin = 0d;
-        double nMax = 0d;
-        double nFreqCutoff = 0d;
+        int nMin = 0;
+        int nMax = 0;
+        int nFreqCutoff = 0;
         fft = null;
-        fftDo = null;
-        simpleSpec = null;
         try {
             // FIXME - Use specified sampleFreq, not this hard coded one
-            final int sampleFreq;
-            if (this.mSdData.mSampleFreq != 0) this.mSampleFreq = (short) this.mSdData.mSampleFreq;
-            else sampleFreq = (int) ((double) this.mSdData.mNsamp / this.mSdData.dT);
-            final double freqRes = 1.0d * this.mSampleFreq / ((double) this.mSdData.mNsamp);
-            Log.v(this.TAG, "doAnalysis(): mSampleFreq=" + this.mSampleFreq + " mNSamp=" + this.mSdData.mNsamp + ": freqRes=" + freqRes);
+            mSampleFreq = Constants.SD_SERVICE_CONSTANTS.defaultSampleRate;
+            double freqRes = 1.0 * mSampleFreq / mSdData.mNsamp;
+            Log.v(TAG, "doAnalysis(): mSampleFreq=" + mSampleFreq + " mNSamp=" + mSdData.mNsamp + ": freqRes=" + freqRes);
+            Log.v(TAG, "doAnalysis(): rawData=" + Arrays.toString(mSdData.rawData));
             // Set the frequency bounds for the analysis in fft output bin numbers.
-            nMin = this.mAlarmFreqMin / freqRes;
-            nMax = this.mAlarmFreqMax / freqRes;
-            Log.v(this.TAG, "doAnalysis(): mAlarmFreqMin=" + this.mAlarmFreqMin + ", nMin=" + nMin
-                    + ", mAlarmFreqMax=" + this.mAlarmFreqMax + ", nMax=" + nMax);
+            nMin = (int) (mAlarmFreqMin / freqRes);
+            nMax = (int) (mAlarmFreqMax / freqRes);
+            Log.v(TAG, "doAnalysis(): mAlarmFreqMin=" + mAlarmFreqMin + ", nMin=" + nMin
+                    + ", mAlarmFreqMax=" + mAlarmFreqMax + ", nMax=" + nMax);
             // Calculate the bin number of the cutoff frequency
-            final short mFreqCutoff = 12;
-            nFreqCutoff = (double) mFreqCutoff / freqRes;
-            Log.v(this.TAG, "mFreqCutoff = " + ((short) mFreqCutoff) + ", nFreqCutoff=" + nFreqCutoff);
+            nFreqCutoff = (int) (mFreqCutoff / freqRes);
+            Log.v(TAG, "mFreqCutoff = " + mFreqCutoff + ", nFreqCutoff=" + nFreqCutoff);
 
-            fftDo = new DoubleFFT_1D(this.mSdData.mNsamp);
-            fft = new double[this.mSdData.mNsamp * 2];
+            DoubleFFT_1D fftDo = new DoubleFFT_1D(mSdData.mNsamp);
+            fft = new double[mSdData.mNsamp * 2];
             ///System.arraycopy(mAccData, 0, fft, 0, mNsamp);
-            System.arraycopy(this.mSdData.rawData, 0, fft, 0, this.mSdData.mNsamp);
+            System.arraycopy(mSdData.rawData, 0, fft, 0, mSdData.mNsamp);
             fftDo.realForward(fft);
 
             // Calculate the whole spectrum power (well a value equivalent to it that avoids square root calculations
             // and zero any readings that are above the frequency cutoff.
             double specPower = 0;
-            for (int i = 1; i < this.mSdData.mNsamp / 2; i++)
-                if (i <= nFreqCutoff) specPower = specPower + this.getMagnitude(fft, i);
-                else {
+            for (int i = 1; i < mSdData.mNsamp / 2; i++) {
+                if (i <= nFreqCutoff) {
+                    specPower = specPower + getMagnitude(fft, i);
+                } else {
                     fft[2 * i] = 0.;
                     fft[2 * i + 1] = 0.;
                 }
+            }
             //Log.v(TAG,"specPower = "+specPower);
             //specPower = specPower/(mSdData.mNsamp/2);
-            specPower = specPower / this.mSdData.mNsamp / 2;
+            specPower = specPower / mSdData.mNsamp / 2;
             //Log.v(TAG,"specPower = "+specPower);
 
             // Calculate the Region of Interest power and power ratio.
             double roiPower = 0;
-            for (int i = (int) Math.floor(nMin); i < (int) Math.ceil(nMax); i++)
-                roiPower = roiPower + this.getMagnitude(fft, i);
+            for (int i = nMin; i < nMax; i++) {
+                roiPower = roiPower + getMagnitude(fft, i);
+            }
             roiPower = roiPower / (nMax - nMin);
-            final double roiRatio = 10 * roiPower / specPower;
+            double roiRatio = 10 * roiPower / specPower;
 
             // Calculate the simplified spectrum - power in 1Hz bins.
-            // Values for SD_MODE
-            final int SIMPLE_SPEC_FMAX = 10;
             simpleSpec = new double[SIMPLE_SPEC_FMAX + 1];
             for (int ifreq = 0; ifreq < SIMPLE_SPEC_FMAX; ifreq++) {
-                final int binMin = (int) (1 + ifreq / freqRes);    // add 1 to loose dc component
-                final int binMax = (int) (1 + (ifreq + 1) / freqRes);
+                int binMin = (int) (1 + ifreq / freqRes);    // add 1 to loose dc component
+                int binMax = (int) (1 + (ifreq + 1) / freqRes);
                 simpleSpec[ifreq] = 0;
-                for (int i = binMin; i < binMax; i++)
-                    simpleSpec[ifreq] = simpleSpec[ifreq] + this.getMagnitude(fft, i);
+                for (int i = binMin; i < binMax; i++) {
+                    simpleSpec[ifreq] = simpleSpec[ifreq] + getMagnitude(fft, i);
+                }
                 simpleSpec[ifreq] = simpleSpec[ifreq] / (binMax - binMin);
             }
 
             // Populate the mSdData structure to communicate with the main SdServer service.
-            if (this.mSdData.dataTime == null) this.mSdData.dataTime = new Time();
-            this.mSdData.dataTime.setToNow();
-            // Amount by which to reduce analysis results to scale to be comparable to analysis on Pebble.
-            final int ACCEL_SCALE_FACTOR = 1000;
-            this.mSdData.specPower = (long) specPower / ACCEL_SCALE_FACTOR;
-            this.mSdData.roiPower = (long) roiPower / ACCEL_SCALE_FACTOR;
-            this.mSdData.dataTime.setToNow();
-            this.mSdData.maxVal = 0;   // not used
-            this.mSdData.maxFreq = 0;  // not used
-            this.mSdData.haveData = true;
-            this.mSdData.alarmThresh = this.mAlarmThresh;
-            this.mSdData.alarmRatioThresh = this.mAlarmRatioThresh;
-            this.mSdData.alarmFreqMin = this.mAlarmFreqMin;
-            this.mSdData.alarmFreqMax = this.mAlarmFreqMax;
+            mSdData.dataTime.setToNow();
+            mSdData.specPower = (long) (specPower / gravityScaleFactor);
+            mSdData.roiPower = (long) (roiPower / gravityScaleFactor);
+            mSdData.dataTime.setToNow();
+            mSdData.maxVal = 0;   // not used
+            mSdData.maxFreq = 0;  // not used
+            mSdData.haveData = true;
+            mSdData.alarmThresh = mAlarmThresh;
+            mSdData.alarmRatioThresh = mAlarmRatioThresh;
+            mSdData.alarmFreqMin = mAlarmFreqMin;
+            mSdData.alarmFreqMax = mAlarmFreqMax;
             // note mSdData.batteryPc is set from settings data in updateFromJSON()
             // FIXME - I haven't worked out why dividing by 1000 seems necessary to get the graph on scale - we don't seem to do that with the Pebble.
-            for (int i = 0; i < SIMPLE_SPEC_FMAX; i++)
-                this.mSdData.simpleSpec[i] = (int) simpleSpec[i] / ACCEL_SCALE_FACTOR;
-            Log.v(this.TAG, "simpleSpec = " + Arrays.toString(this.mSdData.simpleSpec));
+            for (int i = 0; i < SIMPLE_SPEC_FMAX; i++) {
+                mSdData.simpleSpec[i] = (int) (simpleSpec[i] / gravityScaleFactor);
+            }
+            Log.v(TAG, "simpleSpec = " + Arrays.toString(mSdData.simpleSpec));
 
-
-        } catch (final Exception e) {
-            Log.e(this.TAG, "doAnalysis - Exception during Analysis", e);
-
+            // Because we have received data, set flag to show watch app running.
+        } catch (Exception e) {
+            Log.e(TAG, "doAnalysis - Exception during Analysis", e);
         }
+
     }
 
     @Override
@@ -1611,6 +1672,62 @@ if (Objects.equals(intent, null)) return START_NOT_STICKY;
         // Try to change Pebble_SD -> WearReceiver  
     }
 
+    public class PowerUpdateReceiver extends BroadcastReceiver {
+
+        public boolean isRegistered = false;
+
+        /**
+         * register receiver
+         *
+         * @param context - Context
+         * @param filter  - Intent Filter
+         * @return see Context.registerReceiver(BroadcastReceiver,IntentFilter)
+         */
+        public Intent register(Context context, IntentFilter filter) {
+            try {
+                // ceph3us note:
+                // here I propose to create
+                // a isRegistered(Context) method
+                // as you can register receiver on different context
+                // so you need to match against the same one :)
+                // example  by storing a list of weak references
+                // see LoadedApk.class - receiver dispatcher
+                // its and ArrayMap there for example
+                return !isRegistered
+                        ? context.registerReceiver(this, filter)
+                        : null;
+            } finally {
+                isRegistered = true;
+            }
+        }
+
+
+        /**
+         * unregister received
+         *
+         * @param context - context
+         * @return true if was registered else false
+         */
+        public boolean unregister(Context context) {
+            // additional work match on context before unregister
+            // eg store weak ref in register then compare in unregister
+            // if match same instance
+            return isRegistered
+                    && unregisterInternal(context);
+        }
+
+        private boolean unregisterInternal(Context context) {
+            context.unregisterReceiver(this);
+            isRegistered = false;
+            return true;
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            powerUpdateReceiveAction(intent);
+        }
+
+    }
 
 }
 

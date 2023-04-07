@@ -420,6 +420,7 @@ public class StartUpActivity extends AppCompatActivity
         } else {
             if (backpressToast != null) backpressToast.cancel();
             activateStopByBack = true;
+            mUtil.stopServer();
             super.onBackPressed();
         }
     }

@@ -136,7 +136,7 @@ public class OsdUtil {
         Intent mServiceIntent;
         mServiceIntent = new Intent(mContext, AWSdService.class);
         mServiceIntent.setData(Uri.parse("Stop"));
-        mServiceIntent.setAction(Constants.ACTION.STOP_WEAR_SD_ACTION);
+        mServiceIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
         mContext.stopService(mServiceIntent);
     }
 

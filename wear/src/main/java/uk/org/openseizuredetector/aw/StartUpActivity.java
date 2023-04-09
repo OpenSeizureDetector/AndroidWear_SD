@@ -328,6 +328,10 @@ public class StartUpActivity extends AppCompatActivity
                         Log.i(TAG, "Starting Normal Service (Pre-Android 8)");
                         mContext.startService(mServiceIntent);
                     }*/
+
+
+                if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(mContext);
+
                 mUtil.bindToServer(mContext, mConnection);
 
 
@@ -339,18 +343,19 @@ public class StartUpActivity extends AppCompatActivity
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Failed to bind to AWSdService").toString());
             }
             if (mConnection.mAWSdService != null) {
-                mHandler.postDelayed(this::bindRetry, 100);
                 if (mConnection.mAWSdService.mSdData != null) {
 
                     if (!mConnection.mAWSdService.mSdData.serverOK) {
-                        Log.e(TAG, "onStart(): initialised server");
-                        mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
-                    } else {
                         Log.e(TAG, "onStart(): no initialised server");
                         mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
+                    } else {
+                        Log.d(TAG, "onStart(): initialised server");
+                        mConnection.mAWSdService.requestCreateNewChannelAndInit = true;
+                        return;
                     }
                 }
             }
+            mHandler.postDelayed(this::bindRetry, 100);
                 //if (mContext == null) mContext = this;
                 //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
@@ -397,9 +402,11 @@ public class StartUpActivity extends AppCompatActivity
         super.onResume();
         Log.i(TAG, "onResume() - recreating defaults if needed");
 
-
         if (!mUtil.isServerRunning())
             mUtil.startServer();
+
+        if (mConnection == null) mConnection = new SdServiceConnection(mContext);
+
         mUtil.bindToServer(mContext, mConnection);
         mHandler.postDelayed(this::bindRetry, 100);
         //mUiTimer = new Timer();
@@ -479,20 +486,25 @@ public class StartUpActivity extends AppCompatActivity
     protected void onPause() {
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
-        if (mConnection != null)
-            if (mConnection.mAWSdService != null)
-                if (mConnection.mAWSdService.mBound) {
-                    mConnection.mAWSdService.parentContext = null;
-                    if (!Objects.equals(mConnection.mAWSdService.mMobileNodeUri, null)) {
-                        SharedPreferences.Editor editor = SP.edit();
-                        editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
-                        editor.apply();
+        if (Objects.nonNull(mConnection))
+            if (Objects.nonNull(mConnection.mAWSdService))
+                if (mConnection.mBound)
+                    if (mConnection.mAWSdService.mBound) {
+                        mConnection.mAWSdService.parentContext = null;
+                        if (Objects.nonNull(mConnection.mAWSdService.mMobileNodeUri)) {
+                            if (Objects.isNull(SP))
+                                SP = PreferenceManager
+                                        .getDefaultSharedPreferences(mContext);
+
+                            SharedPreferences.Editor editor = SP.edit();
+                            editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
+                            editor.apply();
+                        }
+                        if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
+                            mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+                        mUtil.unbindFromServer(this, mConnection);
+                        mConnection = null;
                     }
-                    if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
-                        mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
-                    mUtil.unbindFromServer(mContext, mConnection);
-                    mConnection = null;
-                }
         if (Objects.nonNull(mUiTimer)) mUiTimer.cancel();
     }
 
@@ -510,12 +522,18 @@ public class StartUpActivity extends AppCompatActivity
     }
 
     private void bindRetry() {
-        if (Objects.nonNull(mConnection.mAWSdService))
-            if (mConnection.mBound) {
-                mConnection.mAWSdService.parentContext = mContext;
-                mConnection.mAWSdService.serviceLiveData.observe(this, this::onChangedObserver);
-                return;
-            }
+        if (Objects.nonNull(mConnection))
+            if (Objects.nonNull(mConnection.mAWSdService))
+                if (mConnection.mBound) {
+                    mConnection.mAWSdService.parentContext = mContext;
+                    if (!mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
+                        try {
+                            mConnection.mAWSdService.serviceLiveData.observe(this, this::onChangedObserver);
+                        } catch (IllegalArgumentException illegalArgumentException) {
+                            Log.e(TAG, "bindRetry() error: ", illegalArgumentException);
+                        }
+                    return;
+                }
         if (!(isFinishing() && isDestroyed())) mHandler.postDelayed(() -> bindRetry(), 100);
     }
 

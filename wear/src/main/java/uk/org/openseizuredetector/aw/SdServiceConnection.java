@@ -30,6 +30,8 @@ import android.content.ServiceConnection;
 import android.os.IBinder;
 import android.util.Log;
 
+import java.util.Objects;
+
 
 /**
  * Defines callbacks for service binding, passed to bindService()
@@ -52,8 +54,9 @@ public class SdServiceConnection implements ServiceConnection {
         AWSdService.SdBinder binder = (AWSdService.SdBinder) service;
         mAWSdService = binder.getService();
         mBound = true;
-        if (mAWSdService != null) {
-            Log.v(TAG, "onServiceConnected() - Asking server to update its settings");
+        if (Objects.nonNull(mAWSdService)) {
+            mAWSdService.mBound = true;
+            Log.v(TAG, "onServiceConnected() - Asking server to update UI");
             mAWSdService.serviceLiveData.signalChangedData();
         } else {
             Log.v(TAG, "onServiceConnected() - mSdServer is null - this is wrong!");
@@ -63,7 +66,9 @@ public class SdServiceConnection implements ServiceConnection {
     @Override
     public void onServiceDisconnected(ComponentName arg0) {
         Log.v(TAG, "onServiceDisonnected()");
-        mBound = false;
+        if (Objects.nonNull(mAWSdService))
+            mAWSdService.mBound = false;
+
     }
 
     /**

@@ -147,7 +147,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private int curHeart = 0;
     private int avgHeart = 0;
     private float batteryPct = -1f;
-    private ArrayList<Integer> heartRates = new ArrayList<Integer>(10);
+    private ArrayList<Double> heartRates = new ArrayList<Double>(10);
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;
     private boolean logNotConnectedMessagePf;
@@ -273,12 +273,18 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         }
 
 
-
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
 
-        if (powerUpdateReceiverPowerUpdated.isRegistered && !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
-            unBindBatteryEvents();
-        bindBatteryEvents();
+        if (Objects.nonNull(intent)) {
+            if (powerUpdateReceiverPowerUpdated.isRegistered &&
+                    !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
+                unBindBatteryEvents();
+
+            //error getaction null
+            if (!powerUpdateReceiverPowerUpdated.isRegistered &&
+                    !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
+                bindBatteryEvents();
+        }
 
         if (Objects.equals(allNodes, null)) {
             if (Objects.equals(mNodeListClient, null))
@@ -306,10 +312,47 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         return super.onStartCommand(intent, flags, startId);
     }
 
+    private void bindMobileRunner() {
+        Log.v(TAG, "bindMobileRunner()");
+        try {
+            Wearable.getCapabilityClient(mContext)
+                    .addListener(
+                            this,
+                            Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
+                    );
+            capabilityClient = Wearable.getCapabilityClient(mContext);
+            capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);
+            capabilityClient.addListener(this, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
+            Wearable.getMessageClient(mContext).addListener(this);
+            Log.v(TAG, "onRebind()");
+        } catch (Exception e) {
+            Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
+
+        }
+        // Initialise the Google API Client so we can use Android Wear messages.
+        try {
+            if (mSdData.serverOK) {
+
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "onStartCommand() ", e);
+        }//Eval cutting From Here Until End Function
+    }
+
+
+    private void unBindMobileRunner() {
+        Log.d(TAG, "unBindMobileRunner() :  running unbind mobile");
+        Wearable.getMessageClient(mContext).removeListener(this);
+        Wearable.getCapabilityClient(mContext).removeListener(this);
+    }
+
     private void serviceRunner(Intent intent) {
+        Log.d(TAG, "serviceRunner() :  running bind service ");
         if (Objects.isNull(intentFromOnStart)) intentFromOnStart = intent;
 
-        if (intentFromOnStart != null) {
+        if (Objects.nonNull(intentFromOnStart)) {
+            Log.d(TAG, "got intent: " + intent.toString());
             if (Constants.GLOBAL_CONSTANTS.mStartUri.equals(intentFromOnStart.getData())) {
                 Log.i(TAG, "Received Start Foreground Intent ");
                 // your start service code
@@ -372,30 +415,10 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 if (!mWakeLock.isHeld()) {
                     mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
                 }
-                try {
-                    Wearable.getCapabilityClient(mContext)
-                            .addListener(
-                                    this,
-                                    Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                            );
-                    capabilityClient = Wearable.getCapabilityClient(mContext);
-                    capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);
-                    capabilityClient.addListener(this, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
-                    Wearable.getMessageClient(mContext).addListener(this);
-                    Log.v(TAG, "onRebind()");
-                } catch (Exception e) {
-                    Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
 
-                }
-                // Initialise the Google API Client so we can use Android Wear messages.
-                try {
-                    if (mSdData.serverOK) {
+                // Bind Android mobile through android-wear libraries.
+                bindMobileRunner();
 
-                        sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "onStartCommand() ", e);
-                }//Eval cutting From Here Until End Function
                 Timer appStartTimer = new Timer();
                 appStartTimer.schedule(new TimerTask() {
                                            @Override
@@ -443,6 +466,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
             unBindBatteryEvents();
             unBindSensorListeners();
+            unBindMobileRunner();
             stopSelf();
             stopForeground(true);
 
@@ -709,6 +733,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             calculateStaticTimings();
             bindSensorListeners();
             //TODO
+        } else if (!messageEventPath.isEmpty() && Constants.ACTION.STOP_WEAR_SD_ACTION.equals(messageEventPath)) {
+            mUtil.stopServer();
         } else if (!messageEventPath.isEmpty() && Constants.ACTION.PUSH_SETTINGS_ACTION.equals(messageEventPath)) {
             Log.v(TAG, "Received new settings");
 
@@ -885,7 +911,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     Double.isInfinite(mSampleTimeUs) ||
                     Double.isNaN(mSampleTimeUs)) {
                 calculateStaticTimings();
-                if (mSampleTimeUs <= 0d)
+                if (mSampleTimeUs <= 0d ||
+                        Double.isInfinite(mSampleTimeUs) ||
+                        Double.isNaN(mSampleTimeUs))
                     mSampleTimeUs = SensorManager.SENSOR_DELAY_NORMAL;
             }
             mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
@@ -950,14 +978,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mContext.unregisterReceiver(connectionUpdateReceiver);
                 connectedConnectionUpdates = false;
             }
-        connectionUpdateReceiver = null;
-        powerUpdateReceiver = null;
+
         batteryStatusIntent = null;
     }
 
     protected void powerUpdateReceiveAction(Intent intent) {
         try {
-            mBound = serviceLiveData.hasActiveObservers(); // change out global mbound with serviceLiveData.hasActiveObservers())
+            //mBound = serviceLiveData.hasActiveObservers(); // change out global mbound with serviceLiveData.hasActiveObservers())
             if (intent.getAction() != null) {
                 Log.d(TAG, "onReceive(): Received action:  " + intent.getAction());
                 // Are we charging / charged?
@@ -1030,17 +1057,20 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 
 
-        if (Objects.isNull(batteryStatusIntent)) {
+        if (Objects.isNull(batteryStatusIntent) && !powerUpdateReceiverPowerUpdated.isRegistered) {
             batteryStatusIntent = powerUpdateReceiverPowerUpdated.register(mContext, batteryStatusIntentFilter);//mContext.registerReceiver(powerUpdateReceiver, batteryStatusIntentFilter);
             mSdData.batteryPc = (long) ((batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) / (float) batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)) * 100f);
+            powerUpdateReceiverPowerUpdated.isRegistered = true;
 
         }
         powerUpdateReceiverPowerConnected.register(mContext, new IntentFilter(Intent.ACTION_POWER_CONNECTED));
+        powerUpdateReceiverPowerConnected.isRegistered = true;
         powerUpdateReceiverPowerDisConnected.register(mContext, new IntentFilter(Intent.ACTION_POWER_DISCONNECTED));
+        powerUpdateReceiverPowerDisConnected.isRegistered = true;
         powerUpdateReceiverPowerOkay.register(mContext, new IntentFilter(Intent.ACTION_BATTERY_LOW));
         powerUpdateReceiverPowerLow.register(mContext, new IntentFilter(Intent.ACTION_BATTERY_OKAY));
 
-        if (Objects.isNull(connectionUpdateReceiver))
+        if (Objects.nonNull(connectionUpdateReceiver) && !connectedConnectionUpdates)
             mContext.registerReceiver(connectionUpdateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
         connectedConnectionUpdates = true;
 
@@ -1123,20 +1153,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         Log.v(TAG, "onBind()");
         intentFromOnBind = intent;
         try {
-            Wearable.getCapabilityClient(mContext)
-                    .addListener(
-                            this,
-                            Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
-                    );
-            Wearable.getMessageClient(mContext).addListener(this);
+
             if (mSdData != null) if (mSdData.serverOK) bindSensorListeners();
             unBindBatteryEvents();
             bindBatteryEvents();
-
+            mHandler.postDelayed(() -> serviceRunner(intent), 100);
 
         } catch (Exception e) {
             Log.e(TAG, "onBind(): Error in reloading vars ", e);
         }
+        mBound = true;
         return mBinder;
     }
 
@@ -1163,11 +1189,12 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mSdData.watchAppRunning = false;
                 sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
             }
-            Wearable.getMessageClient(mContext).removeListener(this);
-            Wearable.getCapabilityClient(mContext).removeListener(this);
+
+            //Unbind before Destroying.
+            unBindMobileRunner();
+
             if (mWakeLock != null) if (mWakeLock.isHeld()) mWakeLock.release();
             unBindBatteryEvents();
-            bindBatteryEvents();
         } catch (Exception e) {
             Log.e(TAG, "onDestroy(): error unregistering", e);
         }
@@ -1226,13 +1253,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             heartRates.remove(0);
                             sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                         }
-                        heartRates.add(curHeart);
+                        heartRates.add(mSdData.mHR);
                     }
-                    mSdData.mHRAvg = (int) calculateAverage(heartRates);
+                    mSdData.mHRAvg = calculateAverage(heartRates);
                     if (heartRates.size() < 4) {
                         mSdData.mHRAvg = 0;
                         sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                     }
+                    checkAlarm();
                 } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
                     // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
                     if (mMode == 0) {
@@ -1348,19 +1376,29 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         //mSdData.mHRAlarmActive = (mSdData.alarmState != 6 && mSdData.alarmState != 10);
 
         boolean inAlarm = false;
-        if (mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh) {
-            inAlarm = true;
-        }
-        if (mSdData.mHRAlarmActive && mSdData.mHRAvg != 0d && mSdData.mHR > mSdData.mHRAvg * mHeartPercentThresh) {
-            inAlarm = true;
-            alarmCount = (int) mSdData.alarmTime;
-        }
-        //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
+        Long alarmHoldOfTime = (mSdData.alarmTime + (mAlarmTime * 60L));
+        if (Calendar.getInstance().getTime().getTime() > alarmHoldOfTime) {
+            if (mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh) {
+                inAlarm = true;
+                mAlarmTime = (int) mSdData.alarmTime;
+            }
 
+            if (mSdData.mHRAvg > 0d)
+                if (mSdData.mHRAlarmActive && ((mSdData.mHRAvg < mSdData.mHRThreshMin) || (mSdData.mHRAvg > mSdData.mHRThreshMax))) {
+                    inAlarm = true;
+                    mAlarmTime = (int) mSdData.alarmTime;
+                }
+            if (mSdData.mHRAlarmActive && mSdData.mHRAvg != 0d && mSdData.mHR > mSdData.mHRAvg * mHeartPercentThresh) {
+                inAlarm = true;
+                mAlarmTime = (int) mSdData.alarmTime;
+            }
+            //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
+        }
         showNotification((int) mSdData.alarmState);
         if (inAlarm) {
             alarmCount += 1;
-            if (alarmCount > mSdData.alarmTime) {
+
+            if (alarmHoldOfTime > mSdData.alarmTime) {
                 mSdData.alarmState = 2;
             } else if (alarmCount > mSdData.warnTime) {
                 mSdData.alarmState = 1;
@@ -1388,13 +1426,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     }
 
-    private double calculateAverage(List<Integer> marks) {
-        Integer sum = 0;
+    private double calculateAverage(List<Double> marks) {
+        double sum = 0;
         if (!marks.isEmpty()) {
-            for (Integer mark : marks) {
+            for (Double mark : marks) {
                 sum += mark;
             }
-            return sum.doubleValue() / marks.size();
+            return sum / marks.size();
         }
         return sum;
     }
@@ -1718,6 +1756,8 @@ if (Objects.equals(intent, null)) return START_NOT_STICKY;
                 return !isRegistered
                         ? context.registerReceiver(this, filter)
                         : null;
+
+
             } finally {
                 isRegistered = true;
             }

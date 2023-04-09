@@ -25,6 +25,7 @@
     <uses-permission android:name="androidx.health.permission.RespiratoryRate.READ" />
     <uses-permission android:name="androidx.health.permission.OxygenSaturation.READ" />
     <uses-permission android:name="androidx.health.permission.HeartRate.READ" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"

@@ -13,6 +13,7 @@ android {
         versionName '1.0.0c'
         testFunctionalTest true
         testHandleProfiling true
+        proguardFiles
     }
     buildTypes {
         release {

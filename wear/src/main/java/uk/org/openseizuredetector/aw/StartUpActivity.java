@@ -12,7 +12,6 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -34,13 +33,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.preference.PreferenceManager;
 import androidx.wear.ambient.AmbientModeSupport;
+import androidx.wear.remote.interactions.RemoteActivityHelper;
 import androidx.work.Constraints;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkInfo;
 import androidx.work.WorkManager;
-
-import com.google.android.wearable.intent.RemoteIntent;
 
 import java.util.Calendar;
 import java.util.List;
@@ -48,6 +46,7 @@ import java.util.Objects;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
+import java.util.concurrent.Executors;
 
 import io.reactivex.rxjava3.disposables.Disposable;
 import uk.org.openseizuredetector.SdData;
@@ -305,9 +304,8 @@ public class StartUpActivity extends AppCompatActivity
                 mUtil.startServer();
                 // Bind to the service.
                 Log.i(TAG, "onStart() - binding to server");
-                RemoteIntent.startRemoteActivity(mContext, new Intent(Intent.ACTION_VIEW)
-                        .addCategory(Intent.CATEGORY_BROWSABLE)
-                        .setData(Uri.parse(Constants.ACTION.STARTFOREGROUND_ACTION)), null);
+                RemoteActivityHelper remoteActivityHelper = new RemoteActivityHelper(this, Executors.newSingleThreadExecutor());
+                remoteActivityHelper.startRemoteActivity(new Intent(Constants.GLOBAL_CONSTANTS.mAppPackageName), mMobileNodeUri);
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
                 if (mTextView != null)
@@ -332,7 +330,7 @@ public class StartUpActivity extends AppCompatActivity
 
                 if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(mContext);
 
-                mUtil.bindToServer(mContext, mConnection);
+                mUtil.bindToServer(this, mConnection);
 
 
                 if (mTextView != null)
@@ -355,9 +353,12 @@ public class StartUpActivity extends AppCompatActivity
                     }
                 }
             }
-            mHandler.postDelayed(this::bindRetry, 100);
-                //if (mContext == null) mContext = this;
-                //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
+            mHandler.postDelayed(() -> {
+                Log.d(TAG, "running bindRetry in postDelayed");
+                bindRetry();
+            }, 100);
+            //if (mContext == null) mContext = this;
+            //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
 
 
@@ -407,7 +408,7 @@ public class StartUpActivity extends AppCompatActivity
 
         if (mConnection == null) mConnection = new SdServiceConnection(mContext);
 
-        mUtil.bindToServer(mContext, mConnection);
+        mUtil.bindToServer(this, mConnection);
         mHandler.postDelayed(this::bindRetry, 100);
         //mUiTimer = new Timer();
         //TODO: disable update after test
@@ -428,6 +429,7 @@ public class StartUpActivity extends AppCompatActivity
             if (backpressToast != null) backpressToast.cancel();
             activateStopByBack = true;
             mUtil.stopServer();
+            finishAffinity();
             super.onBackPressed();
         }
     }
@@ -454,10 +456,7 @@ public class StartUpActivity extends AppCompatActivity
             if (Objects.nonNull(mConnection.mAWSdService)) {
                 if (Objects.nonNull(mConnection.mAWSdService.mSdData)) {
                     if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType) || activateStopByBack) {
-
-
                         mUtil.stopServer();
-                        activateStopByBack = false;
                     }
                 }
             }
@@ -476,6 +475,7 @@ public class StartUpActivity extends AppCompatActivity
                     mUtil.unbindFromServer(this, mConnection);
                     if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType) || activateStopByBack) {
                         mUtil.stopServer();
+                        activateStopByBack = false;
                     }
                 }
 
@@ -534,7 +534,10 @@ public class StartUpActivity extends AppCompatActivity
                         }
                     return;
                 }
-        if (!(isFinishing() && isDestroyed())) mHandler.postDelayed(() -> bindRetry(), 100);
+        if (!(isFinishing()
+                && isDestroyed()))
+            mHandler.postDelayed(
+                    () -> bindRetry(), 100);
     }
 
     /**
@@ -579,6 +582,7 @@ public class StartUpActivity extends AppCompatActivity
     }
 
     public void updateUiTask() {
+        Log.d(TAG, "firing runOnUiThread");
         runOnUiThread(() -> {
             try {
                 textViewBuilder = new StringBuilder();

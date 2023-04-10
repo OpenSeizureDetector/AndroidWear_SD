@@ -145,7 +145,7 @@ public class OsdUtil {
      */
     public void bindToServer(Context activity, SdServiceConnection sdServiceConnection) {
         Log.i(TAG, "OsdUtil.bindToServer() - binding to SdServer");
-        Intent intent = new Intent(mContext, AWSdService.class);
+        Intent intent = new Intent(activity, AWSdService.class);
         intent.setAction(Constants.ACTION.BIND_ACTION);
         activity.bindService(intent, sdServiceConnection, Context.BIND_AUTO_CREATE);
         mNbound = mNbound + 1;

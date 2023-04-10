@@ -223,18 +223,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     public AWSdService() {
         super();
+        Log.d(TAG, "AWSdService(): in constructor");
         mContext = this;
-        if (Objects.isNull(powerUpdateReceiverPowerConnected))
-            powerUpdateReceiverPowerConnected = new PowerUpdateReceiver();
-        if (Objects.isNull(powerUpdateReceiverPowerDisConnected))
-            powerUpdateReceiverPowerDisConnected = new PowerUpdateReceiver();
-        if (Objects.isNull(powerUpdateReceiverPowerOkay))
-            powerUpdateReceiverPowerOkay = new PowerUpdateReceiver();
-        if (Objects.isNull(powerUpdateReceiverPowerLow))
-            powerUpdateReceiverPowerLow = new PowerUpdateReceiver();
-        if (Objects.isNull(powerUpdateReceiverPowerUpdated))
-            powerUpdateReceiverPowerUpdated = new PowerUpdateReceiver();
-        if (Objects.isNull(powerUpdateReceiver)) powerUpdateReceiver = new PowerUpdateReceiver();
         mHandler = new Handler(Looper.getMainLooper());
         if (Objects.isNull(mSdData)) mSdData = new SdData();
         mUtil = new OsdUtil(mContext, mHandler);
@@ -245,6 +235,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     @Override
     public void onCreate() {
+
+        Log.d(TAG, "OnCreate()");
         super.onCreate();
     }
 
@@ -276,14 +268,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         Log.v(TAG, "onStartCommand() and intent -name: \"->{intent}");
 
         if (Objects.nonNull(intent)) {
-            if (powerUpdateReceiverPowerUpdated.isRegistered &&
-                    !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
-                unBindBatteryEvents();
+            if (Objects.nonNull(powerUpdateReceiverPowerUpdated)) {
+                if (powerUpdateReceiverPowerUpdated.isRegistered &&
+                        !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
+                    unBindBatteryEvents();
 
-            //error getaction null
-            if (!powerUpdateReceiverPowerUpdated.isRegistered &&
-                    !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
-                bindBatteryEvents();
+                //error getaction null
+                if (!powerUpdateReceiverPowerUpdated.isRegistered &&
+                        !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
+                    bindBatteryEvents();
+            }
         }
 
         if (Objects.equals(allNodes, null)) {
@@ -351,8 +345,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         Log.d(TAG, "serviceRunner() :  running bind service ");
         if (Objects.isNull(intentFromOnStart)) intentFromOnStart = intent;
 
-        if (Objects.nonNull(intentFromOnStart)) {
-            Log.d(TAG, "got intent: " + intent.toString());
+        if (Objects.nonNull(intentFromOnStart)
+        ) {
+            Log.d(TAG, "got intent: " + intent.toURI());
             if (Constants.GLOBAL_CONSTANTS.mStartUri.equals(intentFromOnStart.getData())) {
                 Log.i(TAG, "Received Start Foreground Intent ");
                 // your start service code
@@ -907,6 +902,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     public void bindSensorListeners() {
         try {
+
             if (mSampleTimeUs < (double) SensorManager.SENSOR_DELAY_NORMAL ||
                     Double.isInfinite(mSampleTimeUs) ||
                     Double.isNaN(mSampleTimeUs)) {
@@ -960,16 +956,26 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private void unBindBatteryEvents() {
 
-        if (powerUpdateReceiverPowerUpdated.isRegistered)
-            powerUpdateReceiverPowerUpdated.unregister(mContext);
-        if (powerUpdateReceiverPowerLow.isRegistered)
-            powerUpdateReceiverPowerLow.unregister(mContext);
-        if (powerUpdateReceiverPowerOkay.isRegistered)
-            powerUpdateReceiverPowerOkay.unregister(mContext);
-        if (powerUpdateReceiverPowerConnected.isRegistered)
-            powerUpdateReceiverPowerConnected.unregister(mContext);
-        if (powerUpdateReceiverPowerDisConnected.isRegistered)
-            powerUpdateReceiverPowerDisConnected.unregister(mContext);
+        if (Objects.nonNull(powerUpdateReceiverPowerUpdated)) {
+            if (powerUpdateReceiverPowerUpdated.isRegistered)
+                powerUpdateReceiverPowerUpdated.unregister(mContext);
+        }
+        if (Objects.nonNull(powerUpdateReceiverPowerLow)) {
+            if (powerUpdateReceiverPowerLow.isRegistered)
+                powerUpdateReceiverPowerLow.unregister(mContext);
+        }
+        if (Objects.nonNull(powerUpdateReceiverPowerOkay)) {
+            if (powerUpdateReceiverPowerOkay.isRegistered)
+                powerUpdateReceiverPowerOkay.unregister(mContext);
+        }
+        if (Objects.nonNull(powerUpdateReceiverPowerConnected)) {
+            if (powerUpdateReceiverPowerConnected.isRegistered)
+                powerUpdateReceiverPowerConnected.unregister(mContext);
+        }
+        if (Objects.nonNull(powerUpdateReceiverPowerDisConnected)) {
+            if (powerUpdateReceiverPowerDisConnected.isRegistered)
+                powerUpdateReceiverPowerDisConnected.unregister(mContext);
+        }
         if (Objects.nonNull(powerUpdateReceiver))
             if (((PowerUpdateReceiver) powerUpdateReceiver).isRegistered)
                 mContext.unregisterReceiver(powerUpdateReceiver);
@@ -1054,6 +1060,18 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
 
     private void bindBatteryEvents() {
+
+        if (Objects.isNull(powerUpdateReceiverPowerConnected))
+            powerUpdateReceiverPowerConnected = new PowerUpdateReceiver();
+        if (Objects.isNull(powerUpdateReceiverPowerDisConnected))
+            powerUpdateReceiverPowerDisConnected = new PowerUpdateReceiver();
+        if (Objects.isNull(powerUpdateReceiverPowerOkay))
+            powerUpdateReceiverPowerOkay = new PowerUpdateReceiver();
+        if (Objects.isNull(powerUpdateReceiverPowerLow))
+            powerUpdateReceiverPowerLow = new PowerUpdateReceiver();
+        if (Objects.isNull(powerUpdateReceiverPowerUpdated))
+            powerUpdateReceiverPowerUpdated = new PowerUpdateReceiver();
+        if (Objects.isNull(powerUpdateReceiver)) powerUpdateReceiver = new PowerUpdateReceiver();
         batteryStatusIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 
 
@@ -1187,7 +1205,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             if (mSdData != null) {
                 mSdData.watchConnected = false;
                 mSdData.watchAppRunning = false;
-                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, Constants.ACTION.STOP_WEAR_SD_ACTION);
             }
 
             //Unbind before Destroying.

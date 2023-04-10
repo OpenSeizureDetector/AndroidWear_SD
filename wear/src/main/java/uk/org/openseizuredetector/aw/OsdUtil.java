@@ -45,6 +45,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Enumeration;
+import java.util.Objects;
 
 /**
  * OsdUtil - OpenSeizureDetector Utilities
@@ -157,6 +158,8 @@ public class OsdUtil {
      */
     public void unbindFromServer(Context activity, SdServiceConnection sdServiceConnection) {
         // unbind this activity from the service if it is bound.
+        if (Objects.nonNull(sdServiceConnection.mAWSdService))
+            sdServiceConnection.mAWSdService.mBound = false;
         if (sdServiceConnection.mBound) {
             Log.i(TAG, "unbindFromServer() - unbinding");
             try {

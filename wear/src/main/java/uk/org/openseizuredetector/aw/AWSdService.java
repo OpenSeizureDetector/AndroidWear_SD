@@ -952,6 +952,12 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private void unBindSensorListeners() {
         mSensorManager.unregisterListener(this);
+        mSensorManager.unregisterListener(this, mSensor);
+        mSensorManager.unregisterListener(this, mHeartSensor);
+        mSensorManager.unregisterListener(this, mHeartBeatSensor);
+        mSensorManager.unregisterListener(this, mBloodPressure);
+        mSensorManager.unregisterListener(this, mStationaryDetectSensor);
+        sensorsActive = false;
     }
 
     private void unBindBatteryEvents() {
@@ -1006,14 +1012,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
                     acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
 
-                    if (mIsCharging && sensorsActive)
+                    if (mIsCharging && sensorsActive && Intent.ACTION_POWER_CONNECTED.equals(intent.getAction()))
                         unBindSensorListeners();
-                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive)
+                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
                         bindSensorListeners();
 
                 }
 
-                if (intent.getAction().equals(Intent.ACTION_BATTERY_CHANGED)) {
+                if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
                     if (Objects.isNull(batteryStatusIntent)) return;
                     int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 
@@ -1029,10 +1035,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     chargePlug = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
                     usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
                     acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
+                    boolean batcap = chargePlug == BatteryManager.BATTERY_PROPERTY_CAPACITY;
                     boolean wirelessCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_WIRELESS;
-                    if (mIsCharging && sensorsActive)
+                    if (mIsCharging && sensorsActive && Intent.ACTION_POWER_CONNECTED.equals(intent.getAction()))
                         unBindSensorListeners();
-                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive)
+                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
                         bindSensorListeners();
                 }
                 if (intent.getAction().equals(Intent.ACTION_BATTERY_LOW) ||
@@ -1394,21 +1401,24 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         //mSdData.mHRAlarmActive = (mSdData.alarmState != 6 && mSdData.alarmState != 10);
 
         boolean inAlarm = false;
-        Long alarmHoldOfTime = (mSdData.alarmTime + (mAlarmTime * 60L));
-        if (Calendar.getInstance().getTime().getTime() > alarmHoldOfTime) {
+        Long alarmHoldOfTime = (mSdData.alarmTime + (mAlarmTime * 25000L));
+        if (Calendar.getInstance().getTimeInMillis() > alarmHoldOfTime) {
             if (mSdData.roiPower > mSdData.alarmThresh && mSdData.roiRatio > mSdData.alarmRatioThresh) {
                 inAlarm = true;
                 mAlarmTime = (int) mSdData.alarmTime;
+                mSdData.mHRAlarmStanding = true;
             }
 
             if (mSdData.mHRAvg > 0d)
                 if (mSdData.mHRAlarmActive && ((mSdData.mHRAvg < mSdData.mHRThreshMin) || (mSdData.mHRAvg > mSdData.mHRThreshMax))) {
                     inAlarm = true;
+                    mSdData.mHRAlarmStanding = true;
                     mAlarmTime = (int) mSdData.alarmTime;
                 }
             if (mSdData.mHRAlarmActive && mSdData.mHRAvg != 0d && mSdData.mHR > mSdData.mHRAvg * mHeartPercentThresh) {
                 inAlarm = true;
                 mAlarmTime = (int) mSdData.alarmTime;
+                mSdData.mHRAlarmStanding = true;
             }
             //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
         }
@@ -1418,18 +1428,19 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
             if (alarmHoldOfTime > mSdData.alarmTime) {
                 mSdData.alarmState = 2;
-            } else if (alarmCount > mSdData.warnTime) {
+                long[] pattern = {0, 100, 200, 300};
+                mVibe.vibrate(pattern, -1);
+            } else if (alarmCount > 2) {
                 mSdData.alarmState = 1;
             }
-            long[] pattern = {0, 100, 200, 300};
-            mVibe.vibrate(pattern, -1);
+
 
             //
         } else {
             // If we are in an ALARM state, revert back to WARNING, otherwise
             // revert back to OK.
-            if (mSdData.alarmState == 2) {
-                mSdData.alarmState = 1;
+            if (alarmCount >= 2) {
+                alarmCount -= 1;
             } else {
                 mSdData.alarmState = 0;
                 alarmCount = 0;

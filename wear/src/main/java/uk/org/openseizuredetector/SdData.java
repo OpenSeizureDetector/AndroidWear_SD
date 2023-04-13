@@ -67,6 +67,7 @@ public class SdData<T> implements Parcelable {
     public long nMin;
     public long nMax;
     public long warnTime;
+    // number of miliseconds of currentTime-date
     public long alarmTime;
     public long alarmThresh;
     public long alarmRatioThresh;

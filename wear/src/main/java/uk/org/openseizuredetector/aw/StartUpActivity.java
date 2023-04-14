@@ -120,7 +120,7 @@ public class StartUpActivity extends AppCompatActivity
         setContentView(R.layout.activity_start_up);
         try {
             if (mContext == null) mContext = this;
-            if (mUtil == null) mUtil = new OsdUtil(mContext, mHandler);
+            if (mUtil == null) mUtil = new OsdUtil(this, mHandler);
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
             //if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
 
@@ -215,7 +215,7 @@ public class StartUpActivity extends AppCompatActivity
         AmbientModeSupport.AmbientController ambientController = AmbientModeSupport.attach(this);
 
 
-        if (mConnection == null) mConnection = new SdServiceConnection(mContext);
+        if (mConnection == null) mConnection = new SdServiceConnection(this);
     }
 
     private void onChangedObserver(@Nullable WorkInfo workInfo) {
@@ -328,9 +328,10 @@ public class StartUpActivity extends AppCompatActivity
                     }*/
 
 
-                if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(mContext);
+                if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(this);
 
-                mUtil.bindToServer(this, mConnection);
+                if (Objects.nonNull(mConnection))
+                    if (!mConnection.mBound) mUtil.bindToServer(this, mConnection);
 
 
                 if (mTextView != null)
@@ -406,9 +407,9 @@ public class StartUpActivity extends AppCompatActivity
         if (!mUtil.isServerRunning())
             mUtil.startServer();
 
-        if (mConnection == null) mConnection = new SdServiceConnection(mContext);
+        if (mConnection == null) mConnection = new SdServiceConnection(this);
 
-        mUtil.bindToServer(this, mConnection);
+        if (!mConnection.mBound) mUtil.bindToServer(this, mConnection);
         mHandler.postDelayed(this::bindRetry, 100);
         //mUiTimer = new Timer();
         //TODO: disable update after test
@@ -428,6 +429,9 @@ public class StartUpActivity extends AppCompatActivity
         } else {
             if (backpressToast != null) backpressToast.cancel();
             activateStopByBack = true;
+            if (Objects.nonNull(mConnection))
+                if (mConnection.mBound)
+                    mUtil.unbindFromServer(this, mConnection);
             mUtil.stopServer();
             finishAffinity();
             super.onBackPressed();
@@ -494,17 +498,18 @@ public class StartUpActivity extends AppCompatActivity
                         if (Objects.nonNull(mConnection.mAWSdService.mMobileNodeUri)) {
                             if (Objects.isNull(SP))
                                 SP = PreferenceManager
-                                        .getDefaultSharedPreferences(mContext);
+                                        .getDefaultSharedPreferences(this);
 
                             SharedPreferences.Editor editor = SP.edit();
                             editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
                             editor.apply();
                         }
-                        if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
-                            mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
-                        mUtil.unbindFromServer(this, mConnection);
-                        mConnection = null;
                     }
+        if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
+            mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+        mUtil.unbindFromServer(this, mConnection);
+        mConnection = null;
+
         if (Objects.nonNull(mUiTimer)) mUiTimer.cancel();
     }
 

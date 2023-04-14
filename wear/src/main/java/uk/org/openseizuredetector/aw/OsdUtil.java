@@ -151,6 +151,11 @@ public class OsdUtil {
         activity.bindService(intent, sdServiceConnection, Context.BIND_AUTO_CREATE);
         mNbound = mNbound + 1;
         Log.i(TAG, "OsdUtil.bindToServer() - mNbound = " + mNbound);
+        try {
+            sdServiceConnection.mBound = true;
+        } catch (Exception e) {
+            Log.e(TAG, "bindToServer(): not connected in this context, error setting bound:", e);
+        }
     }
 
     /**

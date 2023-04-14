@@ -1001,26 +1001,26 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 Log.d(TAG, "onReceive(): Received action:  " + intent.getAction());
                 // Are we charging / charged?
                 if (
-                        intent.getAction().equals(Intent.ACTION_POWER_CONNECTED) ||
-                                intent.getAction().equals(Intent.ACTION_POWER_DISCONNECTED)) {
-                    mChargingState = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                        Intent.ACTION_POWER_CONNECTED.equals(intent.getAction()) ||
+                                Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction())) {
+                    mChargingState = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
                     mIsCharging = mChargingState == BatteryManager.BATTERY_STATUS_CHARGING ||
                             mChargingState == BatteryManager.BATTERY_STATUS_FULL;
 
                     // How are we charging?
-                    chargePlug = batteryStatusIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+                    chargePlug = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
                     usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
                     acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
 
                     if (mIsCharging && sensorsActive && Intent.ACTION_POWER_CONNECTED.equals(intent.getAction()))
                         unBindSensorListeners();
-                    if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
+                    if (!mIsCharging && mMobileDeviceConnected && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
                         bindSensorListeners();
 
                 }
 
                 if (Intent.ACTION_BATTERY_CHANGED.equals(intent.getAction())) {
-                    if (Objects.isNull(batteryStatusIntent)) return;
+                    if (Objects.isNull(intent)) return;
                     int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 
                     int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);

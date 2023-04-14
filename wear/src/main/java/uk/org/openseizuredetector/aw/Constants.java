@@ -7,6 +7,7 @@ public class Constants {
         public final int ALARMS_OFF = 6;
         public final int ALARMS_ON = 0;
         public static final int PERMISSION_REQUEST_BODY_SENSORS = 16;
+        static final Uri CAPABILITY_WEAR_APP = Uri.parse("wear://");
         public final String wearableAppCheckPayload = "AppOpenWearable";
         public final String wearableAppCheckPayloadReturnACK = "AppOpenWearableACK";
         public final String TAG_MESSAGE_RECEIVED = "SdDataSourceAw";
@@ -34,7 +35,7 @@ public class Constants {
         public final String mSdServerIntent = "sdServerIntent";
         public final String intentReceiver = "intentReceiver";
         public final String returnPath = " returnPath";
-        public final String intentAction = " intentAction";
+        public final String intentAction = "intentAction";
         public final String wearReceiverServiceIntent = "wearReceiverServiceIntent";
         public final String mSdDataPath = "mSdDataPath";
         public final String dataType = "dataType";

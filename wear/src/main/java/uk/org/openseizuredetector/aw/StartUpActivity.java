@@ -421,20 +421,25 @@ public class StartUpActivity extends AppCompatActivity
 
     @Override
     public void onBackPressed() {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastPress > 5000) {
-            backpressToast = Toast.makeText(getBaseContext(), "Press back again to exit", Toast.LENGTH_LONG);
-            backpressToast.show();
-            lastPress = currentTime;
-        } else {
-            if (backpressToast != null) backpressToast.cancel();
-            activateStopByBack = true;
-            if (Objects.nonNull(mConnection))
-                if (mConnection.mBound)
-                    mUtil.unbindFromServer(this, mConnection);
-            mUtil.stopServer();
-            finishAffinity();
-            super.onBackPressed();
+        try {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastPress > 5000) {
+                backpressToast = Toast.makeText(getBaseContext(), "Press back again to exit", Toast.LENGTH_LONG);
+                backpressToast.show();
+                lastPress = currentTime;
+            } else {
+                Log.d(TAG, "onBackPressed: initiating shutdown");
+                if (backpressToast != null) backpressToast.cancel();
+                activateStopByBack = true;
+                if (Objects.nonNull(mConnection))
+                    if (mConnection.mBound)
+                        mUtil.unbindFromServer(this, mConnection);
+                mUtil.stopServer();
+                finishAffinity();
+                super.onBackPressed();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "onBackPressed() Error thrown while processing.");
         }
     }
 
@@ -490,8 +495,8 @@ public class StartUpActivity extends AppCompatActivity
     protected void onPause() {
         super.onPause();
         Log.i(TAG, "onPause() - unbinding from service");
-        if (Objects.nonNull(mConnection))
-            if (Objects.nonNull(mConnection.mAWSdService))
+        if (Objects.nonNull(mConnection)) {
+            if (Objects.nonNull(mConnection.mAWSdService)) {
                 if (mConnection.mBound)
                     if (mConnection.mAWSdService.mBound) {
                         mConnection.mAWSdService.parentContext = null;
@@ -505,8 +510,11 @@ public class StartUpActivity extends AppCompatActivity
                             editor.apply();
                         }
                     }
-        if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
-            mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+                if (Objects.nonNull(mConnection.mAWSdService.serviceLiveData))
+                    if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
+                        mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+            }
+        }
         mUtil.unbindFromServer(this, mConnection);
         mConnection = null;
 

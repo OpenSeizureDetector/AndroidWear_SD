@@ -435,7 +435,7 @@ public class StartUpActivity extends AppCompatActivity
                     if (mConnection.mBound)
                         mUtil.unbindFromServer(this, mConnection);
                 mUtil.stopServer();
-                finishAffinity();
+                mHandler.postDelayed(this::finishAffinity, 100);
                 super.onBackPressed();
             }
         } catch (Exception e) {
@@ -615,10 +615,12 @@ public class StartUpActivity extends AppCompatActivity
                                     .append(mConnection.mAWSdService.mSdData.serverOK)
                                     .append(" time: ")
                                     .append(Calendar.getInstance().getTime())
-                                    .append(" ❤️ ")
+                                    .append("\n ❤️ ")
                                     .append((short) mConnection.mAWSdService.mSdData.mHR)
                                     .append(" \uD83D\uDD0B% ")
                                     .append(mConnection.mAWSdService.mSdData.batteryPc)
+                                    .append(" 📱 \uD83D\uDD0B% : ")
+                                    .append(mConnection.mAWSdService.serverBatteryPct)
                                     .toString());
 
                         if (mAlarmText != null && mConnection.mAWSdService.mSdData != null) {

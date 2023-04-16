@@ -147,6 +147,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private int curHeart = 0;
     private int avgHeart = 0;
     private float batteryPct = -1f;
+    public int serverBatteryPct = -1;
     private ArrayList<Double> heartRates = new ArrayList<Double>(10);
     private CapabilityInfo mMobileNodesWithCompatibility = null;
     private boolean logNotConnectedMessage;
@@ -452,21 +453,22 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                         , 5000); //end timerTask
 
 
-            }
-        } else if (Constants.ACTION.STOPFOREGROUND_ACTION.equals(intentFromOnStart.getAction()) ||
-                Constants.GLOBAL_CONSTANTS.mStopUri.equals(intentFromOnStart.getData()) ||
-                Constants.ACTION.STOP_WEAR_SD_ACTION.equals(intentFromOnStart.getAction())) {
-            Log.i(TAG, "Received Stop Foreground Intent");
-            //your end service code
+            } else if (Constants.ACTION.STOPFOREGROUND_ACTION.equals(intentFromOnStart.getAction()) ||
+                    Constants.GLOBAL_CONSTANTS.mStopUri.equals(intentFromOnStart.getData()) ||
+                    Constants.ACTION.STOP_WEAR_SD_ACTION.equals(intentFromOnStart.getAction())) {
+                Log.i(TAG, "Received Stop Foreground Intent");
+                //your end service code
 
-            unBindBatteryEvents();
-            unBindSensorListeners();
-            unBindMobileRunner();
-            stopSelf();
-            stopForeground(true);
+                unBindBatteryEvents();
+                unBindSensorListeners();
+                unBindMobileRunner();
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, Constants.ACTION.STOP_WEAR_SD_ACTION);
+                stopSelf();
+                stopForeground(true);
 
             /*
             mContext.stopSelfResult(startId);*/
+            }
         }
     }
 
@@ -787,6 +789,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);
             }
+        } else if (!messageEventPath.isEmpty() && Constants.ACTION.BATTERYUPDATE_ACTION.equals(messageEventPath)) {
+            serverBatteryPct = Integer.parseInt(s1);
+            serviceLiveData.signalChangedData();
         } else {
             Log.v(TAG + "nn", "Not processing received message, displaying in log: " + s1);
         }
@@ -951,12 +956,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     }
 
     private void unBindSensorListeners() {
-        mSensorManager.unregisterListener(this);
-        mSensorManager.unregisterListener(this, mSensor);
-        mSensorManager.unregisterListener(this, mHeartSensor);
-        mSensorManager.unregisterListener(this, mHeartBeatSensor);
-        mSensorManager.unregisterListener(this, mBloodPressure);
-        mSensorManager.unregisterListener(this, mStationaryDetectSensor);
+        if (Objects.nonNull(mSensor))
+            mSensorManager.unregisterListener(this, mSensor);
+        if (Objects.nonNull(mHeartSensor))
+            mSensorManager.unregisterListener(this, mHeartSensor);
+        if (Objects.nonNull(mHeartBeatSensor))
+            mSensorManager.unregisterListener(this, mHeartBeatSensor);
+        if (Objects.nonNull(mBloodPressure))
+            mSensorManager.unregisterListener(this, mBloodPressure);
+        if (Objects.nonNull(mStationaryDetectSensor))
+            mSensorManager.unregisterListener(this, mStationaryDetectSensor);
         sensorsActive = false;
     }
 

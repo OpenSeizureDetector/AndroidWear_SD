@@ -138,7 +138,13 @@ public class OsdUtil {
         mServiceIntent = new Intent(mContext, AWSdService.class);
         mServiceIntent.setData(Uri.parse("Stop"));
         mServiceIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
-        mContext.stopService(mServiceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Log.i(TAG, "Starting Foreground Service (Android 8 and above)");
+            mContext.startForegroundService(mServiceIntent);
+        } else {
+            Log.i(TAG, "Starting Normal Service (Pre-Android 8)");
+            mContext.startService(mServiceIntent);
+        }
     }
 
     /**

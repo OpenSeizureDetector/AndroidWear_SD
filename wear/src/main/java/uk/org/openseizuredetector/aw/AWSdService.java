@@ -811,6 +811,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mMobileNodesWithCompatibility = capabilityInfo;
                 if (!Objects.equals(mWearNode, null)) if (mWearNode.equals(changedNode)) {
                     mSdData.watchConnected = true;
+                    mMobileDeviceConnected = true;
                 }
             }
             if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD.equalsIgnoreCase(capabilityInfo.getName())) {

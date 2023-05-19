@@ -8,4 +8,6 @@
     <string name="report_ok">I am OK</string>
     <string name="fire_alarm">    ALARM     </string>
     <string name="title_activity_start_up">StartUpActivity</string>
+    <string name="ParsePreferenceWarning">Problem Parsing Preferences - Something won\'t work - Please go back to Settings and correct it!</string>
+    <string name="ErrorWritingLogFileWarning">ERROR Writing to Log File</string>
 </resources>

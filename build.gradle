@@ -17,7 +17,11 @@ buildscript {
         // in the individual module build.gradle files
     }
 }
-
+configurations {
+    all {
+        exclude group: 'androidx.lifecycle', module: 'lifecycle-viewmodel-ktx'
+    }
+}
 allprojects {
     repositories {
         mavenCentral()

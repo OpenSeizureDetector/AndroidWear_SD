@@ -36,6 +36,7 @@ import android.os.Vibrator;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
@@ -73,6 +74,7 @@ import java.util.stream.Collectors;
 
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.ObservableEmitter;
+import kotlin.jvm.functions.Function1;
 import uk.org.openseizuredetector.SdData;
 
 public class AWSdService extends RemoteWorkerService implements SensorEventListener, MessageClient.OnMessageReceivedListener, CapabilityClient.OnCapabilityChangedListener {
@@ -221,14 +223,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private PowerUpdateReceiver powerUpdateReceiverPowerUpdated = null;
     private PowerUpdateReceiver powerUpdateReceiverPowerLow = null;
     private PowerUpdateReceiver powerUpdateReceiverPowerOkay = null;
-
+    private AccelerationSensor accelerationSensor ;
+    private HeartRateSensor heartRateSensor;
+    private static HeartBeatSensor heartBeatSensor;
+    private MotionDetectSensor motionDetectSensor;
     public AWSdService() {
         super();
         Log.d(TAG, "AWSdService(): in constructor");
-        mContext = this;
         mHandler = new Handler(Looper.getMainLooper());
         if (Objects.isNull(mSdData)) mSdData = new SdData();
-        mUtil = new OsdUtil(mContext, mHandler);
+        mUtil = new OsdUtil(this, mHandler);
         serviceLiveData = new ServiceLiveData();
 
     }
@@ -245,13 +249,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.v(TAG, "AWSdService Constructor()");
-        Log.d(TAG, "AWSdSevice Constructor result of context compare: " + mContext +
+        Log.d(TAG, "AWSdSevice Constructor result of context compare: " + this +
                 " and parentContext: " + parentContext + " result compare: " +
-                Objects.equals(mContext, parentContext));
+                Objects.equals(this, parentContext));
 
 
         notificationManager = (NotificationManager)
-                mContext.getSystemService(NOTIFICATION_SERVICE);
+                this.getSystemService(NOTIFICATION_SERVICE);
 
         if (mSensorManager != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -283,7 +287,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
         if (Objects.equals(allNodes, null)) {
             if (Objects.equals(mNodeListClient, null))
-                mNodeListClient = Wearable.getNodeClient(mContext);
+                mNodeListClient = Wearable.getNodeClient(this);
             Task getAllNodes = mNodeListClient.getConnectedNodes();
             getAllNodes.addOnSuccessListener(result -> {
                 allNodes = (List<Node>) result;
@@ -310,15 +314,15 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private void bindMobileRunner() {
         Log.v(TAG, "bindMobileRunner()");
         try {
-            Wearable.getCapabilityClient(mContext)
+            Wearable.getCapabilityClient(this)
                     .addListener(
                             this,
                             Uri.parse("wear://"), CapabilityClient.FILTER_REACHABLE
                     );
-            capabilityClient = Wearable.getCapabilityClient(mContext);
+            capabilityClient = Wearable.getCapabilityClient(this);
             capabilityClient.addLocalCapability(Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD);
             capabilityClient.addListener(this, Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver);
-            Wearable.getMessageClient(mContext).addListener(this);
+            Wearable.getMessageClient(this).addListener(this);
             Log.v(TAG, "onRebind()");
         } catch (Exception e) {
             Log.e(TAG, "onRebind(): Exception in updating capabilityClient and messageClient", e);
@@ -922,6 +926,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             mSdData.watchFwVersion = Build.DISPLAY;
             mSdData.watchPartNo = Build.BOARD;
             mSdData.watchSdName = Build.MODEL;
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (mContext.checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                     requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
@@ -935,6 +940,21 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 }
             }
 
+            if (Objects.isNull(heartBeatSensor))
+                heartBeatSensor = new HeartBeatSensor((Context) this,
+                        (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate,
+                        (int) (Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 4)) {
+                    @Nullable
+                    @Override
+                    public void onSensorValuesChanged(SensorEvent event) {
+                        onSensorChanged(event);
+                    }
+
+                    @Override
+                    public void setOnSensorValuesChangedListener(@NonNull Function1 listener) {
+
+                    }
+                };
             mSensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             mSensorManager.registerListener(this, mSensor, (int) mSampleTimeUs, (int) mSampleTimeUs * 3, mHandler);

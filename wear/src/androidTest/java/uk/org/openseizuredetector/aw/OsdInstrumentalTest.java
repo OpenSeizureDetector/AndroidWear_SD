@@ -54,15 +54,15 @@ import java.util.Random;
 @MediumTest
 @RunWith(AndroidJUnit4.class)
 public class OsdInstrumentalTest {
-    static Context context;
-    static Application application;
-    static Looper looper;
-    static Handler handler;
-    static OsdUtil util;
-    static AWSdService aWsdService;
-    static Intent sdServerIntent;
-    static ServiceController<AWSdService> controller;
-    static SdServiceConnection sdServiceConnection;
+     Context context;
+     Application application;
+     Looper looper;
+     Handler handler;
+     OsdUtil util;
+     AWSdService aWsdService;
+     Intent sdServerIntent;
+     ServiceController<AWSdService> controller;
+     SdServiceConnection sdServiceConnection;
 
     @Before
     public void initOsdUtil(){
@@ -177,12 +177,12 @@ public class OsdInstrumentalTest {
     }
 
     @Test
-    public static void testIsServerNotRunning() throws Exception {
+    public void testIsServerNotRunning() throws Exception {
         assertFalse(util.isServerRunning());
     }
 
     @Test
-    public static void testStartServer() throws Exception {
+    public void testStartServer() throws Exception {
         util.startServer();
     }
 

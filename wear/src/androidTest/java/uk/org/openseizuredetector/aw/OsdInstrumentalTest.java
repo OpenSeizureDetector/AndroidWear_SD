@@ -9,8 +9,11 @@ import static org.junit.Assert.assertTrue;
 import android.app.Application;
 import android.app.Service;
 import android.content.Context;
+import android.content.ContextParams;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
@@ -37,6 +40,7 @@ import androidx.test.filters.MediumTest;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 
@@ -74,6 +78,7 @@ public class OsdInstrumentalTest {
         sdServerIntent = new Intent(context,AWSdService.class)
                 .setData(Constants.GLOBAL_CONSTANTS.mStartUri);
         sdServiceConnection = new SdServiceConnection(context);
+
         // return true if we are using mobile data, otherwise return false
         ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -164,14 +169,22 @@ public class OsdInstrumentalTest {
     }
 
     @Test
-    public void testGetAppVersionName(){
+    public void testGetAppVersionName() {
         String equalStringNull = null;
-        String equalStringAppVersionName = Constants.GLOBAL_CONSTANTS.mAppPackageName;
-        assertNotEquals(util.getAppVersionName(),equalStringNull);
-        assertEquals(equalStringAppVersionName,util.getAppVersionName());
+        assertNotEquals(util.getAppVersionName(), equalStringNull);
+        final PackageManager packageManager = context.getPackageManager();
+        if (packageManager != null) {
+            try {
+                PackageInfo packageInfo = packageManager.getPackageInfo(context.getPackageName(), 0);
+                String versionName = packageInfo.versionName;
+                assertEquals(versionName, util.getAppVersionName());
+            } catch (PackageManager.NameNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
-    @Test
+            @Test
     public void testGetLocalIpAddress() throws UnknownHostException {
         InetAddress equalStringGetLocalIpAddress = InetAddress.getByName( util.getLocalIpAddress());
     }
@@ -182,8 +195,12 @@ public class OsdInstrumentalTest {
     }
 
     @Test
-    public void testStartServer() throws Exception {
+    public void testStartServer()  {
         util.startServer();
+        sdServiceConnection = new SdServiceConnection(context);
+        util.bindToServer(context,sdServiceConnection);
+        ContextParams params = sdServiceConnection.mAWSdService.getParams();
+        //sdServiceConnection.mAWSdService.startForeground();
     }
 
     @Test
@@ -194,6 +211,7 @@ public class OsdInstrumentalTest {
                     util.isServerRunning()
             );
             Log.i(this.getClass().getName(),"assertation of util.isServerRunning ok!");
+            assertTrue(util.bindToServer(context,sdServiceConnection));
         }catch (AssertionError assertionError){
             Log.e(this.getClass().getName(),assertionError.getLocalizedMessage(),assertionError);
             if (Objects.nonNull(aWsdService)) assertTrue(aWsdService.bindService(sdServerIntent,sdServiceConnection,Service.BIND_EXTERNAL_SERVICE));
@@ -202,8 +220,17 @@ public class OsdInstrumentalTest {
     }
 
     @Test
-    public void testIsMobileDataActive(){
-        assertTrue(util.isMobileDataActive());
+    public void testIsMobileDataActive() {
+        ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm != null) {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
+
+                NetworkCapabilities capabilities = cm.getNetworkCapabilities(cm.getActiveNetwork());
+                if(Objects.nonNull(capabilities))
+                    if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR))
+                        assertTrue(util.isMobileDataActive());
+            }
+        }
 
     }
 

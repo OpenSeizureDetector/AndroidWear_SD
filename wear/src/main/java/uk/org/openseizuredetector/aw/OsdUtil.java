@@ -223,11 +223,12 @@ public class OsdUtil {
     /**
      * bind an activity to to an already running server.
      */
-    public void bindToServer(Context activity, SdServiceConnection sdServiceConnection) {
+    public boolean bindToServer(Context activity, SdServiceConnection sdServiceConnection) {
         Log.i(TAG, "OsdUtil.bindToServer() - binding to SdServer");
+        boolean returnValue;
         Intent intent = new Intent(activity, AWSdService.class);
         intent.setAction(Constants.ACTION.BIND_ACTION);
-        activity.bindService(intent, sdServiceConnection, Context.BIND_AUTO_CREATE);
+        returnValue = activity.bindService(intent, sdServiceConnection, Context.BIND_AUTO_CREATE);
         mNbound = mNbound + 1;
         Log.i(TAG, "OsdUtil.bindToServer() - mNbound = " + mNbound);
         try {
@@ -235,6 +236,7 @@ public class OsdUtil {
         } catch (Exception e) {
             Log.e(TAG, "bindToServer(): not connected in this context, error setting bound:", e);
         }
+        return  returnValue;
     }
 
     /**
@@ -337,10 +339,7 @@ public class OsdUtil {
                     return false;
                 }
 
-                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ) {
-                    return true;
-                }else
-                    return false;
+                return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
             }else {
                 NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
                 if (activeNetwork == null) return false;

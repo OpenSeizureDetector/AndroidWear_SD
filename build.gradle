@@ -22,6 +22,9 @@ configurations {
         exclude group: 'androidx.lifecycle', module: 'lifecycle-viewmodel-ktx'
     }
 }
+
+
+
 allprojects {
     repositories {
         mavenCentral()
@@ -30,8 +33,8 @@ allprojects {
             name 'Google'
         }
     }
-}
 
+}
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

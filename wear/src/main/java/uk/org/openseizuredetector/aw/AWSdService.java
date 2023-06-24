@@ -274,7 +274,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
         if (Objects.nonNull(intent)) {
             if (Objects.nonNull(powerUpdateReceiverPowerUpdated)) {
-                if (powerUpdateReceiverPowerUpdated.isRegistered &&
+                if (!powerUpdateReceiverPowerUpdated.isRegistered &&
                         !Constants.ACTION.STOPFOREGROUND_ACTION.equals(intent.getAction()))
                     unBindBatteryEvents();
 
@@ -293,10 +293,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 allNodes = (List<Node>) result;
             });
         }
-
-        if (Objects.nonNull(intent))
-            intentFromOnStart = intent;
-        else return START_NOT_STICKY;
+         if (Objects.nonNull(intent))
+                intentFromOnStart = intent;
+            else return START_NOT_STICKY;
 
         if (!Constants.ACTION.BIND_ACTION.equals(intent.getAction())) {
             //createNotificationChannel();
@@ -305,7 +304,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             //prepareAndStartForeground();
             //mStartForegroundService(intent);
 
-            mHandler.post(() -> serviceRunner(intent));
+            serviceRunner(intent);
             //showNotification(0);
         }
         return super.onStartCommand(intent, flags, startId);
@@ -352,7 +351,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
         if (Objects.nonNull(intentFromOnStart)
         ) {
-            Log.d(TAG, "got intent: " + intent.toURI());
+            Log.d(TAG, "got intent: " + intent);
             if (Constants.GLOBAL_CONSTANTS.mStartUri.equals(intentFromOnStart.getData())) {
                 Log.i(TAG, "Received Start Foreground Intent ");
                 // your start service code
@@ -479,7 +478,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
     private void connectObserver(UUID connectingUuid) {
         mHandler.postDelayed(() -> {
-            LiveData<WorkInfo> connectingLiveData = serviceLiveData;
+            ServiceLiveData connectingLiveData = serviceLiveData;
             if (!connectingLiveData.hasObservers())
                 if (!connectingLiveData.hasActiveObservers()) {
                     connectingLiveData.observe((LifecycleOwner) this, this::onChangedObserver);
@@ -912,64 +911,69 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     public void bindSensorListeners() {
         try {
 
-            if (mSampleTimeUs < (double) SensorManager.SENSOR_DELAY_NORMAL ||
-                    Double.isInfinite(mSampleTimeUs) ||
-                    Double.isNaN(mSampleTimeUs)) {
-                calculateStaticTimings();
-                if (mSampleTimeUs <= 0d ||
-                        Double.isInfinite(mSampleTimeUs) ||
-                        Double.isNaN(mSampleTimeUs))
-                    mSampleTimeUs = SensorManager.SENSOR_DELAY_NORMAL;
-            }
-            mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
-            mSdData.watchFwVersion = Build.DISPLAY;
-            mSdData.watchPartNo = Build.BOARD;
-            mSdData.watchSdName = Build.MODEL;
+            if (Objects.nonNull(mSdData)) {
+                if (mSdData.serverOK){
+                    if (mSampleTimeUs < (double) SensorManager.SENSOR_DELAY_NORMAL ||
+                            Double.isInfinite(mSampleTimeUs) ||
+                            Double.isNaN(mSampleTimeUs)) {
+                        calculateStaticTimings();
+                        if (mSampleTimeUs <= 0d ||
+                                Double.isInfinite(mSampleTimeUs) ||
+                                Double.isNaN(mSampleTimeUs))
+                            mSampleTimeUs = SensorManager.SENSOR_DELAY_NORMAL;
+                    }
+                    mSdData.watchSdVersion = BuildConfig.VERSION_NAME;
+                    mSdData.watchFwVersion = Build.DISPLAY;
+                    mSdData.watchPartNo = Build.BOARD;
+                    mSdData.watchSdName = Build.MODEL;
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (this.checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                    ActivityCompat.requestPermissions(getActivity(this),
-                            new String[]{Manifest.permission.BODY_SENSORS},
-                            Constants.GLOBAL_CONSTANTS.PERMISSION_REQUEST_BODY_SENSORS);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (this.checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
+                            ActivityCompat.requestPermissions(getActivity(this),
+                                    new String[]{Manifest.permission.BODY_SENSORS},
+                                    Constants.GLOBAL_CONSTANTS.PERMISSION_REQUEST_BODY_SENSORS);
 
 
-                } else {
-                    Log.d(TAG, "ALREADY GRANTED");
+                        } else {
+                            Log.d(TAG, "ALREADY GRANTED");
+                        }
+                    }
+
+                    if (Objects.isNull(heartBeatSensor))
+                        heartBeatSensor = new HeartBeatSensor((Context) this,
+                                (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate,
+                                (int) (Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 4)) {
+                            @Nullable
+                            @Override
+                            public void onSensorValuesChanged(SensorEvent event) {
+                                onSensorChanged(event);
+                            }
+
+                            @Override
+                            public void setOnSensorValuesChangedListener(@NonNull Function1 listener) {
+
+                            }
+                        };
+                    mSensorManager = (SensorManager) this.getSystemService(Context.SENSOR_SERVICE);
+                    mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+                    mSensorManager.registerListener(this, mSensor, (int) mSampleTimeUs, (int) mSampleTimeUs * 3, mHandler);
+                    mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+                    mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate);
+                    mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
+                    mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 3);
+                    mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
+                    mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
+                    mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
+                    mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
+                    sensorsActive = true;
+                    unBindBatteryEvents();
+                    bindBatteryEvents();
+
+                    mSdData.watchAppRunning = true;
                 }
             }
-
-            if (Objects.isNull(heartBeatSensor))
-                heartBeatSensor = new HeartBeatSensor((Context) this,
-                        (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate,
-                        (int) (Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 4)) {
-                    @Nullable
-                    @Override
-                    public void onSensorValuesChanged(SensorEvent event) {
-                        onSensorChanged(event);
-                    }
-
-                    @Override
-                    public void setOnSensorValuesChangedListener(@NonNull Function1 listener) {
-
-                    }
-                };
-            mSensorManager = (SensorManager) this.getSystemService(Context.SENSOR_SERVICE);
-            mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, (int) mSampleTimeUs, (int) mSampleTimeUs * 3, mHandler);
-            mHeartSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
-            mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate);
-            mHeartBeatSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT);
-            mSensorManager.registerListener(this, mHeartSensor, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate, (int) Constants.GLOBAL_CONSTANTS.getMaxHeartRefreshRate * 3);
-            mBloodPressure = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
-            mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
-            mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
-            mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
-            sensorsActive = true;
-            unBindBatteryEvents();
-            bindBatteryEvents();
-
-
+            mHandler.postDelayed(AWSdService.this::bindSensorListeners,100);
         } catch (Exception e) {
             Log.e(TAG, "bindSensorListners(): Sensor declaration excepted: ", e);
         }
@@ -1292,122 +1296,123 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 batteryPct = 100 * level / (float) scale;
                 mSdData.batteryPc = (int) (batteryPct);
             }
-            if (Objects.nonNull(mSdDataSettings)) if ((!isCharging() || mIsCharging)) {
-                if (Objects.isNull(rawDataList)) rawDataList = new ArrayList<>();
-                if (Objects.isNull(rawDataList3D)) rawDataList3D = new ArrayList<>();
-                if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
-                    int newValue = Math.round(event.values[0]);
-                    //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
-                    // only do something if the value differs from the value before and the value is not 0.
-                    if (mSdData.mHR != newValue && newValue != 0) {
-                        // save the new value
-                        mSdData.mHR = newValue;
-                        // add it to the list and computer a new average
-                        if (heartRates.size() == 10) {
-                            heartRates.remove(0);
-                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-                        }
-                        heartRates.add(mSdData.mHR);
-                    }
-                    mSdData.mHRAvg = calculateAverage(heartRates);
-                    if (heartRates.size() < 4) {
-                        mSdData.mHRAvg = 0;
-                        sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-                    }
-                    checkAlarm();
-                } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-                    // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
-                    if (mMode == 0) {
-                        if (mStartEvent == null) {
-                            Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
-                            Log.v(TAG, "onSensorChanged(): saving initial event data");
-                            mStartEvent = event;
-                            mStartTs = event.timestamp;
-                            mSdData.mNsamp = 0;
-                        } else {
-                            mSdData.mNsamp++;
-                        }
-                        if (mSdData.mNsamp >= mSdDataSettings.mDefaultSampleCount) {
-                            Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
-                            mSdData.dT = 1.0e-9 * (event.timestamp - mStartTs);
-                            mCurrentMaxSampleCount = mSdData.mNsamp;
-                            mSdData.mSampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
-                            mSdData.haveSettings = true;
-                            Log.v(TAG, "onSensorChanged(): Collected data for " + mSdData.dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
-                            accelerationCombined = sqrt(event.values[0] * event.values[0] + event.values[1] * event.values[1] + event.values[2] * event.values[2]);
-                            calculateStaticTimings();
-                            mMode = 1;
-                            mSdData.mNsamp = 0;
-                            mStartTs = event.timestamp;
-                        }
-                    } else if (mMode == 1) {
-                        // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
-
-                        if (mSdData.mNsamp == mCurrentMaxSampleCount) {
-
-
-                            // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
-                            // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
-                            // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
-                            // FIXME - we should do some sort of check and disregard samples with long delays in them.
-                            mSdData.dT = 1e-9 * (event.timestamp - mStartTs);
-                            int sampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
-                            Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
-
-                            // DownSample from the **Hz received frequency to 25Hz and convert to mg.
-                            // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
-                            int readPosition = 1;
-
-                            for (int i = 0; i < Constants.SD_SERVICE_CONSTANTS.defaultSampleCount; i++) {
-                                readPosition = (int) (i / mConversionSampleFactor);
-                                if (readPosition < rawDataList.size()) {
-                                    mSdData.rawData[i] = gravityScaleFactor * rawDataList.get(readPosition) / SensorManager.GRAVITY_EARTH;
-                                    mSdData.rawData3D[i] = gravityScaleFactor * rawDataList3D.get(readPosition) / SensorManager.GRAVITY_EARTH;
-                                    mSdData.rawData3D[i + 1] = gravityScaleFactor * rawDataList3D.get(readPosition + 1) / SensorManager.GRAVITY_EARTH;
-                                    mSdData.rawData3D[i + 2] = gravityScaleFactor * rawDataList3D.get(readPosition + 2) / SensorManager.GRAVITY_EARTH;
-                                    //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
-                                }
+            if (Objects.nonNull(mSdDataSettings))
+                if (!isCharging() ) {
+                    if (Objects.isNull(rawDataList)) rawDataList = new ArrayList<>();
+                    if (Objects.isNull(rawDataList3D)) rawDataList3D = new ArrayList<>();
+                    if (event.sensor.getType() == Sensor.TYPE_HEART_RATE && event.values.length > 0) {
+                        int newValue = Math.round(event.values[0]);
+                        //Log.d(LOG_TAG,sensorEvent.sensor.getName() + " changed to: " + newValue);
+                        // only do something if the value differs from the value before and the value is not 0.
+                        if (mSdData.mHR != newValue && newValue != 0) {
+                            // save the new value
+                            mSdData.mHR = newValue;
+                            // add it to the list and computer a new average
+                            if (heartRates.size() == 10) {
+                                heartRates.remove(0);
+                                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                             }
-                            rawDataList.clear();
-                            rawDataList3D.clear();
-                            mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
-                            doAnalysis();
-                            checkAlarm();
-                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-                            mSdData.mNsamp = 0;
-                            mStartTs = event.timestamp;
-                            return;
-                        } else if (!Objects.equals(rawDataList, null) && rawDataList.size() <= mCurrentMaxSampleCount) {
-
-                            float x = event.values[0];
-                            float y = event.values[1];
-                            float z = event.values[2];
-                            //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
-                            rawDataList.add(sqrt(x * x + y * y + z * z));
-                            rawDataList3D.add((double) x);
-                            rawDataList3D.add((double) y);
-                            rawDataList3D.add((double) z);
-                            mSdData.mNsamp++;
-                            return;
-                        } else if (mSdData.mNsamp > mCurrentMaxSampleCount - 1) {
-                            Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
-                            return;
-                        } else if (rawDataList.size() >= mCurrentMaxSampleCount) {
-                            Log.v(TAG, "onSensorChanged(): mSdData.mNSamp and mCurrentMaxSampleCount differ in size");
-                            rawDataList.remove(0);
-                            rawDataList3D.remove(0);
-                            rawDataList3D.remove(0);
-                            rawDataList3D.remove(0);
-                            return;
-                        } else {
-                            Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                            heartRates.add(mSdData.mHR);
                         }
+                        mSdData.mHRAvg = calculateAverage(heartRates);
+                        if (heartRates.size() < 4) {
+                            mSdData.mHRAvg = 0;
+                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                        }
+                        checkAlarm();
+                    } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+                        // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
+                        if (mMode == 0) {
+                            if (mStartEvent == null) {
+                                Log.v(TAG, "onSensorChanged(): mMode=0 - checking Sample Rate - mNSamp = " + mSdData.mNsamp);
+                                Log.v(TAG, "onSensorChanged(): saving initial event data");
+                                mStartEvent = event;
+                                mStartTs = event.timestamp;
+                                mSdData.mNsamp = 0;
+                            } else {
+                                mSdData.mNsamp++;
+                            }
+                            if (mSdData.mNsamp >= mSdDataSettings.mDefaultSampleCount) {
+                                Log.v(TAG, "onSensorChanged(): Collected Data = final TimeStamp=" + event.timestamp + ", initial TimeStamp=" + mStartTs);
+                                mSdData.dT = 1.0e-9 * (event.timestamp - mStartTs);
+                                mCurrentMaxSampleCount = mSdData.mNsamp;
+                                mSdData.mSampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
+                                mSdData.haveSettings = true;
+                                Log.v(TAG, "onSensorChanged(): Collected data for " + mSdData.dT + " sec - calculated sample rate as " + mSampleFreq + " Hz");
+                                accelerationCombined = sqrt(event.values[0] * event.values[0] + event.values[1] * event.values[1] + event.values[2] * event.values[2]);
+                                calculateStaticTimings();
+                                mMode = 1;
+                                mSdData.mNsamp = 0;
+                                mStartTs = event.timestamp;
+                            }
+                        } else if (mMode == 1) {
+                            // mMode=1 is normal operation - collect NSAMP accelerometer data samples, then analyse them by calling doAnalysis().
 
-                    } else {
-                        Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
+                            if (mSdData.mNsamp == mCurrentMaxSampleCount) {
+
+
+                                // Calculate the sample frequency for this sample, but do not change mSampleFreq, which is used for
+                                // analysis - this is because sometimes you get a very long delay (e.g. when disconnecting debugger),
+                                // which gives a very low frequency which can make us run off the end of arrays in doAnalysis().
+                                // FIXME - we should do some sort of check and disregard samples with long delays in them.
+                                mSdData.dT = 1e-9 * (event.timestamp - mStartTs);
+                                int sampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
+                                Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+
+                                // DownSample from the **Hz received frequency to 25Hz and convert to mg.
+                                // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
+                                int readPosition = 1;
+
+                                for (int i = 0; i < Constants.SD_SERVICE_CONSTANTS.defaultSampleCount; i++) {
+                                    readPosition = (int) (i / mConversionSampleFactor);
+                                    if (readPosition < rawDataList.size()) {
+                                        mSdData.rawData[i] = gravityScaleFactor * rawDataList.get(readPosition) / SensorManager.GRAVITY_EARTH;
+                                        mSdData.rawData3D[i] = gravityScaleFactor * rawDataList3D.get(readPosition) / SensorManager.GRAVITY_EARTH;
+                                        mSdData.rawData3D[i + 1] = gravityScaleFactor * rawDataList3D.get(readPosition + 1) / SensorManager.GRAVITY_EARTH;
+                                        mSdData.rawData3D[i + 2] = gravityScaleFactor * rawDataList3D.get(readPosition + 2) / SensorManager.GRAVITY_EARTH;
+                                        //Log.v(TAG,"i="+i+", rawData="+mSdData.rawData[i]+","+mSdData.rawData[i/2]);
+                                    }
+                                }
+                                rawDataList.clear();
+                                rawDataList3D.clear();
+                                mSdData.mNsamp = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
+                                doAnalysis();
+                                checkAlarm();
+                                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                                mSdData.mNsamp = 0;
+                                mStartTs = event.timestamp;
+                                return;
+                            } else if (!Objects.equals(rawDataList, null) && rawDataList.size() <= mCurrentMaxSampleCount) {
+
+                                float x = event.values[0];
+                                float y = event.values[1];
+                                float z = event.values[2];
+                                //Log.v(TAG,"Accelerometer Data Received: x="+x+", y="+y+", z="+z);
+                                rawDataList.add(sqrt(x * x + y * y + z * z));
+                                rawDataList3D.add((double) x);
+                                rawDataList3D.add((double) y);
+                                rawDataList3D.add((double) z);
+                                mSdData.mNsamp++;
+                                return;
+                            } else if (mSdData.mNsamp > mCurrentMaxSampleCount - 1) {
+                                Log.v(TAG, "onSensorChanged(): Received data during analysis - ignoring sample");
+                                return;
+                            } else if (rawDataList.size() >= mCurrentMaxSampleCount) {
+                                Log.v(TAG, "onSensorChanged(): mSdData.mNSamp and mCurrentMaxSampleCount differ in size");
+                                rawDataList.remove(0);
+                                rawDataList3D.remove(0);
+                                rawDataList3D.remove(0);
+                                rawDataList3D.remove(0);
+                                return;
+                            } else {
+                                Log.v(TAG, "onSensorChanged(): Received empty data during analysis - ignoring sample");
+                            }
+
+                        } else {
+                            Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
+                        }
                     }
-                }
-            } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
+                } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
         } finally {
             if (mBound) mUtil.runOnUiThread(() -> {
                 if (Objects.nonNull(serviceLiveData))
@@ -1771,11 +1776,13 @@ if (Objects.equals(intent, null)) return START_NOT_STICKY;
      * this can also be used for events from binding Activity to
      * Service calls.
      */
-    public class ServiceLiveData extends LiveData {
+    public class ServiceLiveData extends LiveData<SdData>{
+
 
         public void signalChangedData() {
             this.postValue(mSdData);
         }
+
 
         /*
 
@@ -1850,9 +1857,3 @@ if (Objects.equals(intent, null)) return START_NOT_STICKY;
     }
 
 }
-
-
-
-
-
-

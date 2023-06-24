@@ -18,7 +18,7 @@ android {
         targetSdkVersion 31
         multiDexEnabled true
         versionCode 1
-        versionName '1.0.0c'
+        versionName '1.0.0d'
         testFunctionalTest true
         testHandleProfiling true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -43,6 +43,13 @@ android {
     compileOptions {
         targetCompatibility JavaVersion.VERSION_11
         sourceCompatibility JavaVersion.VERSION_11
+    }
+}
+
+configurations {
+    all {
+        exclude group: 'androidx.lifecycle', module: 'lifecycle-viewmodel-ktx'
+        exclude group: 'androidx.lifecycle', module: 'jetified-lifecycle-viewmodel-ktx'
     }
 }
 
@@ -125,6 +132,8 @@ dependencies {
     androidTestImplementation 'androidx.test:monitor:1.5.0'
     androidTestImplementation 'org.junit.jupiter:junit-jupiter'
     androidTestImplementation 'org.junit.jupiter:junit-jupiter:5.10.0-M1'
+    debugImplementation 'androidx.fragment:fragment-testing-manifest:1.6.0-rc01'
+    androidTestImplementation 'androidx.fragment:fragment-testing:1.6.0-rc01'
 
 }
 

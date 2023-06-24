@@ -41,7 +41,9 @@ public class Constants {
         public final String dataType = "dataType";
         public final String dataTypeSettings = "settings";
         public final String dataTypeRaw = "raw";
-        public final String startId = "startId";
+        public final String startId = "startId_Sd_Server";
+        public final String startIdWearReceiver = "startId_Sd_Wear_Receiver";
+        public final String startIdWearSd = "startId_Sd_Wear_Sd";
         public final double maxHeartRefreshRate = 300d;//measured in , 60bpm equals 1Hz
         //equals 1/s seconds = 400ms  , 300bpm is unlikely but will translate to 300Hz 1/300
         public final double getMaxHeartRefreshRate = (1d / (maxHeartRefreshRate / 60d)) * 1000;
@@ -62,6 +64,7 @@ public class Constants {
         public static String START_WEAR_SD_ACTION = "uk.org.openseizuredetector.aw.wear.startWearSD";
         public static String STOP_WEAR_SD_ACTION = "uk.org.openseizuredetector.aw.wear.stopWearSD";
         public static String START_MOBILE_RECEIVER_ACTION = "uk.org.openseizuredetector.aw.mobile.startWearReceiver";
+        public static String STOP_MOBILE_RECEIVER_ACTION = "uk.org.openseizuredetector.aw.mobile.stopWearReceiver";
         public static String START_MOBILE_SD_ACTION = "uk.org.openseizuredetector.aw.mobile.startSeizureDetectorServer";
         public static String REGISTER_START_INTENT_AW = "uk.org.openseizuredetector.aw.mobile.registerStartIntents";
         public static String REGISTER_START_INTENT = "uk.org.openseizuredetector.registerStartIntents";

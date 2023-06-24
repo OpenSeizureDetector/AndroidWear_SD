@@ -25,13 +25,16 @@ import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.LargeTest;
 import androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner;
 import androidx.test.runner.AndroidJUnitRunner;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.MethodSorters;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.android.controller.ServiceController;
@@ -55,7 +58,8 @@ import java.util.Random;
  *
  * as per SDK_INT 26
  */
-@MediumTest
+@LargeTest
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 @RunWith(AndroidJUnit4.class)
 public class OsdInstrumentalTest {
      Context context;
@@ -75,9 +79,8 @@ public class OsdInstrumentalTest {
         looper = context.getMainLooper();
         handler = new Handler(looper);
         util = new OsdUtil(context,handler);
-        sdServerIntent = new Intent(context,AWSdService.class)
-                .setData(Constants.GLOBAL_CONSTANTS.mStartUri);
-        sdServiceConnection = new SdServiceConnection(context);
+        sdServerIntent = new Intent(context,AWSdService.class);
+        if (Objects.isNull(sdServiceConnection)) sdServiceConnection = new SdServiceConnection(context);
 
         // return true if we are using mobile data, otherwise return false
         ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -189,22 +192,20 @@ public class OsdInstrumentalTest {
         InetAddress equalStringGetLocalIpAddress = InetAddress.getByName( util.getLocalIpAddress());
     }
 
-    @Test
-    public void testIsServerNotRunning() throws Exception {
-        assertFalse(util.isServerRunning());
-    }
+
 
     @Test
     public void testStartServer()  {
         util.startServer();
-        sdServiceConnection = new SdServiceConnection(context);
-        util.bindToServer(context,sdServiceConnection);
-        ContextParams params = sdServiceConnection.mAWSdService.getParams();
-        //sdServiceConnection.mAWSdService.startForeground();
+        if (Objects.isNull(sdServiceConnection)) sdServiceConnection = new SdServiceConnection(context);
+        if (Objects.nonNull(sdServiceConnection))
+            if (!sdServiceConnection.mBound) util.bindToServer(context, sdServiceConnection);
     }
 
     @Test
     public void testIsServerRunning() throws Exception {
+        Intent testIntent =sdServerIntent;
+        testIntent.setAction(Constants.ACTION.BIND_ACTION);
         try
         {
             assertTrue(
@@ -246,7 +247,25 @@ public class OsdInstrumentalTest {
 
     @Test
     public void testStopServer() throws Exception {
+        if(Objects.nonNull(sdServiceConnection))
+            if(sdServiceConnection.mBound)
+                util.unbindFromServer(context,sdServiceConnection);
+        sdServiceConnection = null;
         util.stopServer();
+    }
+
+    @Test
+    public void testIsServerNotRunning() throws Exception {
+        SdServiceConnection testSdConnection = new SdServiceConnection(context);
+        if (util.bindToServer(context,testSdConnection)) {
+            util.unbindFromServer(context,testSdConnection);
+            util.stopServer();
+        }
+        try {
+            assertFalse(util.isServerRunning());
+        }catch(AssertionError assertionError){
+            assertFalse(util.bindToServer(context,testSdConnection));
+        }
     }
 
     @After

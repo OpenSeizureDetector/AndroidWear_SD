@@ -206,18 +206,20 @@ public class OsdUtil {
         // then send an Intent to stop the service.
         Intent mServiceIntent;
         mServiceIntent = new Intent(mContext, AWSdService.class);
-        mServiceIntent.setData(Uri.parse("Stop"));
+        mServiceIntent.setData(Constants.GLOBAL_CONSTANTS.mStopUri);
+        mServiceIntent.setAction(Constants.ACTION.STOPFOREGROUND_ACTION);
+        Log.i(TAG,"State of Service: " + isServerRunning());
         mContext.stopService(mServiceIntent);
+        Log.i(TAG,"State of Service: " + isServerRunning());
     }
 
     public void restartServer() {
         stopServer();
         // Wait 1 second to give the server chance to shutdown, then re-start it
-        new Handler().postDelayed(new Runnable() {
-            public void run() {
+        mHandler.postDelayed(() -> {
                 startServer();
             }
-        }, 1000);
+        , 1000);
     }
 
     /**
@@ -228,7 +230,7 @@ public class OsdUtil {
         boolean returnValue;
         Intent intent = new Intent(activity, AWSdService.class);
         intent.setAction(Constants.ACTION.BIND_ACTION);
-        returnValue = activity.bindService(intent, sdServiceConnection, Context.BIND_AUTO_CREATE);
+        returnValue = activity.bindService(intent, sdServiceConnection, Context.BIND_ADJUST_WITH_ACTIVITY);
         mNbound = mNbound + 1;
         Log.i(TAG, "OsdUtil.bindToServer() - mNbound = " + mNbound);
         try {
@@ -244,20 +246,23 @@ public class OsdUtil {
      */
     public void unbindFromServer(Context activity, SdServiceConnection sdServiceConnection) {
         // unbind this activity from the service if it is bound.
-        if (Objects.nonNull(sdServiceConnection.mAWSdService))
-            sdServiceConnection.mAWSdService.mBound = false;
-        if (sdServiceConnection.mBound) {
-            Log.i(TAG, "unbindFromServer() - unbinding");
-            writeToSysLogFile("unbindFromServer() - unbinding");
-            try {
-                activity.unbindService(sdServiceConnection);
-                sdServiceConnection.mBound = false;
-                mNbound = mNbound - 1;
-                Log.i(TAG, "OsdUtil.unBindFromServer() - mNbound = " + mNbound);
-            } catch (Exception ex) {
-                Log.e(TAG, "unbindFromServer() - error unbinding service - " + ex.toString());
-                writeToSysLogFile("unbindFromServer() - error unbinding service - " + ex.toString());
-                Log.i(TAG, "OsdUtil.unBindFromServer() - mNbound = " + mNbound);
+        if(Objects.nonNull(sdServiceConnection)) {
+            if (Objects.nonNull(sdServiceConnection.mAWSdService))
+                sdServiceConnection.mAWSdService.mBound = false;
+
+            if (sdServiceConnection.mBound) {
+                Log.i(TAG, "unbindFromServer() - unbinding");
+                writeToSysLogFile("unbindFromServer() - unbinding");
+                try {
+                    sdServiceConnection.mBound = false;
+                    activity.unbindService(sdServiceConnection);
+                    mNbound = mNbound - 1;
+                    Log.i(TAG, "OsdUtil.unBindFromServer() - mNbound = " + mNbound);
+                } catch (Exception ex) {
+                    Log.e(TAG, "unbindFromServer() - error unbinding service - " + ex.toString());
+                    writeToSysLogFile("unbindFromServer() - error unbinding service - " + ex.toString());
+                    Log.i(TAG, "OsdUtil.unBindFromServer() - mNbound = " + mNbound);
+                }
             }
         } else {
             Log.i(TAG, "unbindFromServer() - not bound to server - ignoring");

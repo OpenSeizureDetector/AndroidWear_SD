@@ -119,10 +119,9 @@ public class StartUpActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_start_up);
         try {
-            if (mContext == null) mContext = this;
-            if (mUtil == null) mUtil = new OsdUtil(this, mHandler);
+            if (mUtil == null) mUtil = new OsdUtil(StartUpActivity.this, mHandler);
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
-            //if (mServiceIntent == null) mServiceIntent = new Intent(mContext, AWSdService.class);
+            //if (mServiceIntent == null) mServiceIntent = new Intent(StartUpActivity.this, AWSdService.class);
 
         } catch (Exception e) {
             Log.v(TAG, "onCreate(): Error in binding Service variable", e);
@@ -212,10 +211,10 @@ public class StartUpActivity extends AppCompatActivity
          * Declare an ambient mode controller, which will be used by
          * the activity to determine if the current mode is ambient.
          */
-        AmbientModeSupport.AmbientController ambientController = AmbientModeSupport.attach(this);
+        AmbientModeSupport.AmbientController ambientController = AmbientModeSupport.attach(StartUpActivity.this);
 
 
-        if (mConnection == null) mConnection = new SdServiceConnection(this);
+        if (mConnection == null) mConnection = new SdServiceConnection(StartUpActivity.this);
     }
 
     private void onChangedObserver(@Nullable WorkInfo workInfo) {
@@ -288,7 +287,7 @@ public class StartUpActivity extends AppCompatActivity
 
             if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
-                ActivityCompat.requestPermissions(mGetActivity(this),
+                ActivityCompat.requestPermissions(mGetActivity(StartUpActivity.this),
                         new String[]{Manifest.permission.BODY_SENSORS},
                         PERMISSION_REQUEST_BODY_SENSORS);
 
@@ -304,7 +303,7 @@ public class StartUpActivity extends AppCompatActivity
                 mUtil.startServer();
                 // Bind to the service.
                 Log.i(TAG, "onStart() - binding to server");
-                RemoteActivityHelper remoteActivityHelper = new RemoteActivityHelper(this, Executors.newSingleThreadExecutor());
+                RemoteActivityHelper remoteActivityHelper = new RemoteActivityHelper(StartUpActivity.this, Executors.newSingleThreadExecutor());
                 remoteActivityHelper.startRemoteActivity(new Intent(Constants.GLOBAL_CONSTANTS.mAppPackageName), mMobileNodeUri);
                 if (mTextView != null)
                     mTextView.setText(new StringBuilder().append(getResources().getString(R.string.hello_round)).append(": Service Started").toString());
@@ -315,7 +314,7 @@ public class StartUpActivity extends AppCompatActivity
             try {
                 // Start the server
                 Log.d(TAG, "OsdUtil.startServer()");
-                    /*mServiceIntent = new Intent(mContext, AWSdService.class);
+                    /*mServiceIntent = new Intent(StartUpActivity.this, AWSdService.class);
                     mServiceIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
                     mServiceIntent.setData(Uri.parse("Start"));
                     mServiceIntent.setAction(Constants.ACTION.STARTFOREGROUND_ACTION);
@@ -328,10 +327,10 @@ public class StartUpActivity extends AppCompatActivity
                     }*/
 
 
-                if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(this);
+                if (Objects.isNull(mConnection)) mConnection = new SdServiceConnection(StartUpActivity.this);
 
                 if (Objects.nonNull(mConnection))
-                    if (!mConnection.mBound) mUtil.bindToServer(this, mConnection);
+                    if (!mConnection.mBound) mUtil.bindToServer(StartUpActivity.this, mConnection);
 
 
                 if (mTextView != null)
@@ -358,8 +357,8 @@ public class StartUpActivity extends AppCompatActivity
                 Log.d(TAG, "running bindRetry in postDelayed");
                 bindRetry();
             }, 100);
-            //if (mContext == null) mContext = this;
-            //if (mConnection == null) mConnection = new SdServiceConnection(mContext);
+            //if (StartUpActivity.this == null) mContext = this;
+            //if (mConnection == null) mConnection = new SdServiceConnection(StartUpActivity.this);
             //if (mConnection.mAWSdService == null) mConnection.mAWSdService = new AWSdService();
 
 
@@ -372,7 +371,7 @@ public class StartUpActivity extends AppCompatActivity
 
     /**
      * onChangedObserver is responsible for handling LiveData changed event
-     * (this.postValue(mSdData)
+     * (StartUpActivity.this.postValue(mSdData)
      * result here is (SdData) from Object o.
      * Source event line: AWSdService:ServiceLiveData:signalChangedData()
      */
@@ -388,7 +387,7 @@ public class StartUpActivity extends AppCompatActivity
 
     private void setPreferredNodeRunner() {
         SP = PreferenceManager
-                .getDefaultSharedPreferences(mContext);
+                .getDefaultSharedPreferences(StartUpActivity.this);
         mConnection.mAWSdService.mMobileNodeUri = SP.getString(Constants.GLOBAL_CONSTANTS.intentAction, "");
         if (mConnection.mAWSdService.mMobileNodeUri.equalsIgnoreCase("")) {
             mHandler.postDelayed(() -> {
@@ -407,10 +406,10 @@ public class StartUpActivity extends AppCompatActivity
         if (!mUtil.isServerRunning())
             mUtil.startServer();
 
-        if (mConnection == null) mConnection = new SdServiceConnection(this);
+        if (mConnection == null) mConnection = new SdServiceConnection(StartUpActivity.this);
 
-        if (!mConnection.mBound) mUtil.bindToServer(this, mConnection);
-        mHandler.postDelayed(this::bindRetry, 100);
+        if (!mConnection.mBound) mUtil.bindToServer(StartUpActivity.this, mConnection);
+        mHandler.postDelayed(StartUpActivity.this::bindRetry, 100);
         //mUiTimer = new Timer();
         //TODO: disable update after test
         //mUiTimer.schedule(new updateUiTask(), 0, 500);
@@ -433,9 +432,9 @@ public class StartUpActivity extends AppCompatActivity
                 activateStopByBack = true;
                 if (Objects.nonNull(mConnection))
                     if (mConnection.mBound)
-                        mUtil.unbindFromServer(this, mConnection);
+                        mUtil.unbindFromServer(StartUpActivity.this, mConnection);
                 mUtil.stopServer();
-                mHandler.postDelayed(this::finishAffinity, 100);
+                mHandler.postDelayed(StartUpActivity.this::finishAffinity, 100);
                 super.onBackPressed();
             }
         } catch (Exception e) {
@@ -451,9 +450,9 @@ public class StartUpActivity extends AppCompatActivity
             if (mConnection.mAWSdService != null) {
                 if (mConnection.mBound) {
                     if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers()) {
-                        mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+                        mConnection.mAWSdService.serviceLiveData.removeObserver(StartUpActivity.this::onChangedObserver);
                     }
-                    mUtil.unbindFromServer(this, mConnection);
+                    mUtil.unbindFromServer(StartUpActivity.this, mConnection);
 
                 }
 
@@ -480,8 +479,8 @@ public class StartUpActivity extends AppCompatActivity
             if (mConnection.mAWSdService != null)
                 if (mConnection.mBound) {
                     if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
-                        mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
-                    mUtil.unbindFromServer(this, mConnection);
+                        mConnection.mAWSdService.serviceLiveData.removeObserver(StartUpActivity.this::onChangedObserver);
+                    mUtil.unbindFromServer(StartUpActivity.this, mConnection);
                     if (Constants.ACTION.STOP_WEAR_SD_ACTION.equals(mConnection.mAWSdService.mSdData.mDataType) || activateStopByBack) {
                         mUtil.stopServer();
                         activateStopByBack = false;
@@ -503,7 +502,7 @@ public class StartUpActivity extends AppCompatActivity
                         if (Objects.nonNull(mConnection.mAWSdService.mMobileNodeUri)) {
                             if (Objects.isNull(SP))
                                 SP = PreferenceManager
-                                        .getDefaultSharedPreferences(this);
+                                        .getDefaultSharedPreferences(StartUpActivity.this);
 
                             SharedPreferences.Editor editor = SP.edit();
                             editor.putString(Constants.GLOBAL_CONSTANTS.intentReceiver, mConnection.mAWSdService.mMobileNodeUri);
@@ -512,10 +511,10 @@ public class StartUpActivity extends AppCompatActivity
                     }
                 if (Objects.nonNull(mConnection.mAWSdService.serviceLiveData))
                     if (mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
-                        mConnection.mAWSdService.serviceLiveData.removeObserver(this::onChangedObserver);
+                        mConnection.mAWSdService.serviceLiveData.removeObserver(StartUpActivity.this::onChangedObserver);
             }
         }
-        mUtil.unbindFromServer(this, mConnection);
+        mUtil.unbindFromServer(StartUpActivity.this, mConnection);
         mConnection = null;
 
         if (Objects.nonNull(mUiTimer)) mUiTimer.cancel();
@@ -541,7 +540,7 @@ public class StartUpActivity extends AppCompatActivity
                     mConnection.mAWSdService.parentContext = mContext;
                     if (!mConnection.mAWSdService.serviceLiveData.hasActiveObservers())
                         try {
-                            mConnection.mAWSdService.serviceLiveData.observe(this, this::onChangedObserver);
+                            mConnection.mAWSdService.serviceLiveData.observe(StartUpActivity.this, this::onChangedObserver);
                         } catch (IllegalArgumentException illegalArgumentException) {
                             Log.e(TAG, "bindRetry() error: ", illegalArgumentException);
                         }
@@ -650,7 +649,7 @@ public class StartUpActivity extends AppCompatActivity
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
             AWSdService.Access access = ((AWSdService.Access) iBinder);
-            mConnection.mAWSdService.parentConnection = new Connection(mContext);
+            mConnection.mAWSdService.parentConnection = new Connection(StartUpActivity.this);
             aWSdService = access.getService();
             Log.d(TAG, "mAWSdService= : " + mConnection.mAWSdService + " aWSdService = : " + aWSdService +
                     " result in compare: " + Objects.equals(aWSdService, mConnection.mAWSdService));

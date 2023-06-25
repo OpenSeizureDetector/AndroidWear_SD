@@ -761,6 +761,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
                 if (sensorsActive) unBindSensorListeners();
                 bindSensorListeners();
+
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, mSdData.toSettingsJSON());
+
             } catch (Exception e) {
                 Log.v(TAG, "Received new settings failed to process", new Throwable());
             }
@@ -972,7 +975,6 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     sensorsActive = true;
                     unBindBatteryEvents();
                     bindBatteryEvents();
-
                     mSdData.watchAppRunning = true;
                 }
             }
@@ -1313,17 +1315,21 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             // add it to the list and computer a new average
                             if (heartRates.size() == 10) {
                                 heartRates.remove(0);
-                                if(mHeartRatesCount %10 == 0 ) sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+
                             }
                             if ((Integer.MAX_VALUE -1) == mHeartRatesCount)
                                 mHeartRatesCount = heartRates.size();
                             mHeartRatesCount++;
                             heartRates.add(mSdData.mHR);
+                            if(mHeartRatesCount %10 == 0 ) {
+                                mSdData.mDataType = Constants.GLOBAL_CONSTANTS.dataTypeRaw;
+                                mSdData.haveData = true;
+                                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                            }
                         }
                         mSdData.mHRAvg = calculateAverage(heartRates);
                         if (heartRates.size() < 4) {
                             mSdData.mHRAvg = 0;
-                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                         }
                         checkAlarm();
                     } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {

@@ -194,7 +194,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                         activeNetwork.isConnectedOrConnecting();
                 if (mNetworkConnected) {
                     try {
-                        Toast.makeText(context, "Network is connected", Toast.LENGTH_LONG).show();
+                        if (false)
+                            Toast.makeText(context, "Network is connected", Toast.LENGTH_LONG).show();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -227,6 +228,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private HeartRateSensor heartRateSensor;
     private static HeartBeatSensor heartBeatSensor;
     private MotionDetectSensor motionDetectSensor;
+    private int mHeartRatesCount;
+
     public AWSdService() {
         super();
         Log.d(TAG, "AWSdService(): in constructor");
@@ -1310,8 +1313,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             // add it to the list and computer a new average
                             if (heartRates.size() == 10) {
                                 heartRates.remove(0);
-                                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                                if(mHeartRatesCount %10 == 0 ) sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                             }
+                            if ((Integer.MAX_VALUE -1) == mHeartRatesCount)
+                                mHeartRatesCount = heartRates.size();
+                            mHeartRatesCount++;
                             heartRates.add(mSdData.mHR);
                         }
                         mSdData.mHRAvg = calculateAverage(heartRates);

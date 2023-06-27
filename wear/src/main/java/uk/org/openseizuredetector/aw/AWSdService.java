@@ -978,7 +978,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     mSdData.watchAppRunning = true;
                 }
             }
-            mHandler.postDelayed(AWSdService.this::bindSensorListeners,100);
+            else {
+                mHandler.postDelayed(AWSdService.this::bindSensorListeners, 100);
+            }
         } catch (Exception e) {
             Log.e(TAG, "bindSensorListners(): Sensor declaration excepted: ", e);
         }

@@ -9,7 +9,6 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -95,6 +94,8 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     public Context parentContext;
     public int mNSamp = 0;
     public double mSampleFreq = 0d;
+
+    private long lastNotificationLevel = 0;
     public double[] mAccData;
     public double sampleConversionFactor;
     public SdData mSdData;
@@ -1470,7 +1471,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             }
             //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
         }
-        showNotification((int) mSdData.alarmState);
+        if (lastNotificationLevel != mSdData.alarmState)
+            showNotification((int) mSdData.alarmState);
+        lastNotificationLevel = mSdData.alarmState;
         if (inAlarm) {
             alarmCount += 1;
 

@@ -414,7 +414,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 PowerManager pm = (PowerManager) (getApplicationContext().getSystemService(Context.POWER_SERVICE));
                 mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "A:WT");
 
-                if (!mWakeLock.isHeld()) {
+                if (false&&!mWakeLock.isHeld()) {
                     mWakeLock.acquire(24 * 60 * 60 * 1000L /*1 DAY*/);
                 }
 

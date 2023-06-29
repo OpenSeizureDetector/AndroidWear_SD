@@ -702,7 +702,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         final String messageEventPath = messageEvent.getPath();
         Log.v(
                 Constants.GLOBAL_CONSTANTS.TAG_MESSAGE_RECEIVED,
-                "onMessageReceived() A message from watch was received:"
+                "onMessageReceived() A message from mobile was received:"
                         + messageEvent.getRequestId()
                         + " "
                         + messageEventPath
@@ -734,8 +734,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             //TODO
         } else if ((!messageEventPath.isEmpty()) && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
             if (sensorsActive) unBindSensorListeners();
-            calculateStaticTimings();
-            bindSensorListeners();
+            if (calculateStaticTimings())
+                bindSensorListeners();
+            else return;
             //TODO
         } else if (!messageEventPath.isEmpty() && Constants.ACTION.STOP_WEAR_SD_ACTION.equals(messageEventPath)) {
             mUtil.stopServer();
@@ -745,7 +746,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             try {
                 mSdData.fromJSON(s1);
                 mSdDataSettings = mSdData;
-                calculateStaticTimings();
+                if (calculateStaticTimings())
+                    bindSensorListeners();
+                else return;
                 prefValHrAlarmActive = mSdData.mHRAlarmActive;
                 if (!Objects.equals(mNodeFullName, null))
                     if (mNodeFullName.isEmpty()) {
@@ -758,6 +761,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 mSdData.serverOK = true;
                 mSdData.haveData = true;
                 mSampleFreq = mSdData.mSampleFreq;
+                mMobileDeviceConnected = true;
 
 
                 if (sensorsActive) unBindSensorListeners();
@@ -794,7 +798,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
                 mSdData = sdData;
                 mSdDataSettings = sdData;
-                calculateStaticTimings();
+                if (calculateStaticTimings())
+                    bindSensorListeners();
+                else return;
 
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);
@@ -824,9 +830,10 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     mMobileDeviceConnected = true;
                 }
             }
-            if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearSD.equalsIgnoreCase(capabilityInfo.getName())) {
+            if (Constants.GLOBAL_CONSTANTS.mAppPackageNameWearReceiver.equalsIgnoreCase(capabilityInfo.getName())) {
                 Log.v(TAG, "Received: " + capabilityInfo.getName());
                 if (changedNodeSet.size() == 0) return;
+
             }
 
             if ("is_connection_lost".equals(capabilityInfo.getName())) {
@@ -883,12 +890,23 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
      * Calculate the static values of requested mSdData.mSampleFreq, mSampleTimeUs and factorDownSampling  through
      * mSdData.analysisPeriod and mSdData.mDefaultSampleCount .
      */
-    private void calculateStaticTimings() {
+    private boolean calculateStaticTimings() {
         // default sampleCount : mSdData.mDefaultSampleCount
         // default sampleTime  : mSdData.analysisPeriod
         // sampleFrequency = sampleCount / sampleTime:
-        mSdData.mSampleFreq = (long) mCurrentMaxSampleCount / mSdDataSettings.analysisPeriod;
+        if (Objects.isNull(mSdDataSettings)||Objects.isNull(mSdData)) {
+            Log.d(TAG,"CalculateStaticTimings(): Returning false due to empty mSdDataSettings");
+            return false;
+        }
+        if (mSdDataSettings.mDefaultSampleCount<=2||mSdDataSettings.analysisPeriod<=1||
+                mSdData.mDefaultSampleCount<=2||mSdData.analysisPeriod<=1||
+                mSdData.mNsamp <=10 || mSdData.dT < 3*10e-4) {
+            Log.d(TAG,"CalculateStaticTimings(): Returning false due to non-set SD-Settings");
+            return false;
+        }
+        mSdData.mSampleFreq = (long) (((double)mSdData.mNsamp) / mSdData.dT);
 
+        long newmSampleFreq = (long) ((double)mCurrentMaxSampleCount / mSdData.dT);
         // now we have mSampleFreq in number samples / second (Hz) as default.
         // to calculate sampleTimeUs: (1 / mSampleFreq) * 1000 [1s == 1000000us]
         mSampleTimeUs = (1d / (double) mSdData.mSampleFreq) * 1e6d;
@@ -912,18 +930,24 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             gravityScaleFactor = 1d;
         }
         miliGravityScaleFactor = gravityScaleFactor * 1e3;
-
+        return true;
     }
 
     public void bindSensorListeners() {
         try {
 
+            Log.d(TAG, "bindSensorListeners(): entered binding process");
+            if (isCharging()) {
+                Log.d(TAG,"bindSensorListeners(): returning not binding due to charging.");
+                return;
+            }
             if (Objects.nonNull(mSdData)) {
                 if (mSdData.serverOK){
                     if (mSampleTimeUs < (double) SensorManager.SENSOR_DELAY_NORMAL ||
                             Double.isInfinite(mSampleTimeUs) ||
                             Double.isNaN(mSampleTimeUs)) {
-                        calculateStaticTimings();
+                        if (!calculateStaticTimings())
+                            return;
                         if (mSampleTimeUs <= 0d ||
                                 Double.isInfinite(mSampleTimeUs) ||
                                 Double.isNaN(mSampleTimeUs))
@@ -1053,8 +1077,12 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB;
                     acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC;
 
-                    if (mIsCharging && sensorsActive && Intent.ACTION_POWER_CONNECTED.equals(intent.getAction()))
-                        unBindSensorListeners();
+                    if (mIsCharging && sensorsActive && Intent.ACTION_POWER_CONNECTED.equals(intent.getAction())) {
+                        {
+                            unBindSensorListeners();
+                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toSettingsJSON());
+                        }
+                    }
                     if (!mIsCharging && mMobileDeviceConnected && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
                         bindSensorListeners();
 
@@ -1082,6 +1110,9 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                         unBindSensorListeners();
                     if (!mIsCharging && mMobileDeviceConnected && mBound && !sensorsActive && Intent.ACTION_POWER_DISCONNECTED.equals(intent.getAction()))
                         bindSensorListeners();
+                    if (mMobileDeviceConnected)
+                        sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toSettingsJSON());
+
                 }
                 if (intent.getAction().equals(Intent.ACTION_BATTERY_LOW) ||
                         intent.getAction().equals(Intent.ACTION_BATTERY_OKAY)) {

@@ -65,7 +65,8 @@
         <service
             android:name=".AWSdService"
             android:enabled="true"
-            android:exported="true" />
+            android:exported="true"
+            android:launchMode="singleTask"/>
 
         <activity
             android:name=".AWSdMainActivity"

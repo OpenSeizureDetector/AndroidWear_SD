@@ -18,7 +18,7 @@ android {
         targetSdkVersion 31
         multiDexEnabled true
         versionCode 1
-        versionName '1.0.0d'
+        versionName '1.0.0e'
         testFunctionalTest true
         testHandleProfiling true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

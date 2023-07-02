@@ -14,7 +14,7 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -25,6 +25,7 @@
     <uses-permission android:name="androidx.health.permission.RespiratoryRate.READ" />
     <uses-permission android:name="androidx.health.permission.OxygenSaturation.READ" />
     <uses-permission android:name="androidx.health.permission.HeartRate.READ" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application

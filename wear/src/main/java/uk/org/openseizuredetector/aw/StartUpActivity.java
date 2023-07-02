@@ -288,7 +288,10 @@ public class StartUpActivity extends AppCompatActivity
             if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 1);
                 ActivityCompat.requestPermissions(mGetActivity(StartUpActivity.this),
-                        new String[]{Manifest.permission.BODY_SENSORS},
+                        new String[]{Manifest.permission.BODY_SENSORS,
+                        Manifest.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND,
+                        Manifest.permission.START_FOREGROUND_SERVICES_FROM_BACKGROUND,
+                        Manifest.permission.POST_NOTIFICATIONS},
                         PERMISSION_REQUEST_BODY_SENSORS);
 
             } else {
@@ -599,34 +602,36 @@ public class StartUpActivity extends AppCompatActivity
             try {
                 textViewBuilder = new StringBuilder();
 
-                if (mConnection.mAWSdService == null) {
-                    Log.v(TAG, "updateUiTask - service is null");
-                    if (mTextView != null)
-                        mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
-                } else {
-                    if (mConnection.mAWSdService.mSdData == null)
-                        mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
-                    else {
-                        //Log.v(TAG, "updateUiTask() - " +mConnection.mAWSdService.mNSamp);
+                if (Objects.nonNull(mConnection)){
+                    if (mConnection.mAWSdService == null) {
+                        Log.v(TAG, "updateUiTask - service is null");
                         if (mTextView != null)
-                            mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round))
-                                    .append(" Connected: ")
-                                    .append(mConnection.mAWSdService.mSdData.serverOK)
-                                    .append(" time: ")
-                                    .append(Calendar.getInstance().getTime())
-                                    .append("\n ❤️ ")
-                                    .append((short) mConnection.mAWSdService.mSdData.mHR)
-                                    .append(" \uD83D\uDD0B% ")
-                                    .append(mConnection.mAWSdService.mSdData.batteryPc)
-                                    .append(" 📱 \uD83D\uDD0B% : ")
-                                    .append(mConnection.mAWSdService.serverBatteryPct)
-                                    .toString());
+                            mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService not created").toString());
+                    } else {
+                        if (mConnection.mAWSdService.mSdData == null)
+                            mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round)).append(": mAWSdService created, but mSdData NOT").toString());
+                        else {
+                            //Log.v(TAG, "updateUiTask() - " +mConnection.mAWSdService.mNSamp);
+                            if (mTextView != null)
+                                mTextView.setText(textViewBuilder.append(getResources().getString(R.string.hello_round))
+                                        .append(" Connected: ")
+                                        .append(mConnection.mAWSdService.mSdData.serverOK)
+                                        .append(" time: ")
+                                        .append(Calendar.getInstance().getTime())
+                                        .append("\n ❤️ ")
+                                        .append((short) mConnection.mAWSdService.mSdData.mHR)
+                                        .append(" \uD83D\uDD0B% ")
+                                        .append(mConnection.mAWSdService.mSdData.batteryPc)
+                                        .append(" 📱 \uD83D\uDD0B% : ")
+                                        .append(mConnection.mAWSdService.serverBatteryPct)
+                                        .toString());
 
-                        if (mAlarmText != null && mConnection.mAWSdService.mSdData != null) {
-                            if (mConnection.mAWSdService.mSdData.alarmState == 2 || mConnection.mAWSdService.mSdData.alarmState == 1) {
-                                mAlarmText.setVisibility(View.VISIBLE);
-                            } else {
-                                mAlarmText.setVisibility(View.INVISIBLE);
+                            if (mAlarmText != null && mConnection.mAWSdService.mSdData != null) {
+                                if (mConnection.mAWSdService.mSdData.alarmState == 2 || mConnection.mAWSdService.mSdData.alarmState == 1) {
+                                    mAlarmText.setVisibility(View.VISIBLE);
+                                } else {
+                                    mAlarmText.setVisibility(View.INVISIBLE);
+                                }
                             }
                         }
                     }

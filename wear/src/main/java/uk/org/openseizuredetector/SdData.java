@@ -187,6 +187,7 @@ public class SdData<T> implements Parcelable {
                 mHRThreshMax = jo.optDouble("hrThreshMax");
                 mHRThreshMin = jo.optDouble("hrThreshMin");
                 phoneName = jo.optString("phoneName");
+                dT = analysisPeriod * 1e-4;
 
             }
             if (Constants.GLOBAL_CONSTANTS.dataTypeRaw.equals(mDataType)) {

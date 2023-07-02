@@ -122,6 +122,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
     private Sensor mHeartBeatSensor;
     private Sensor mBloodPressure;
     private Sensor mStationaryDetectSensor;
+    private Sensor mAmbientTemperatureSensor;
+    private Sensor mProximitySensor;
+    private Sensor mOffBodySensor;
+    private boolean isOffBody = false;
+    private boolean inOffBodyChangeEvent = false;
     private SensorEvent mHeartStartEvent = null;
     private long mStartTs = 0;
     private SdData mSdDataSettings;
@@ -464,12 +469,11 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     Constants.GLOBAL_CONSTANTS.mStopUri.equals(intentFromOnStart.getData()) ||
                     Constants.ACTION.STOP_WEAR_SD_ACTION.equals(intentFromOnStart.getAction())) {
                 Log.i(TAG, "Received Stop Foreground Intent");
-                //your end service code
 
                 unBindBatteryEvents();
                 unBindSensorListeners();
                 unBindMobileRunner();
-                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, Constants.ACTION.STOP_WEAR_SD_ACTION);
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA_RECEIVED, Constants.ACTION.STOP_WEAR_APP_ACTION);
                 stopSelf();
                 stopForeground(true);
 
@@ -538,17 +542,22 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                 break;
             case 1:
                 titleStr = "WARNING";
-                smsStr = "OSD Active: " + mSdData.mHR + " bpm";
+                smsStr = "OSD Active: " + mSdData.mHR + " bpm "  + mSdData.alarmPhrase;
             case 2:
                 titleStr = "ALARM";
-                smsStr = "OSD Active: " + mSdData.mHR + " bpm";
+                smsStr = "OSD Active: " + mSdData.mHR + " bpm " + mSdData.alarmPhrase;
             case -1:
                 titleStr = "FAULT";
-                smsStr = "OSD Active: " + mSdData.mHR + " bpm";
+                smsStr = "OSD Active: " + mSdData.mHR + " bpm " + mSdData.alarmPhrase;
             default:
                 titleStr = "OK";
                 smsStr = "OSD Active: " + mSdData.mHR + " bpm";
         }
+        String man[] = {Manifest.permission.BODY_SENSORS_BACKGROUND,
+                Manifest.permission.FOREGROUND_SERVICE,
+        Manifest.permission.INTERNET,
+        Manifest.permission.RECEIVE_BOOT_COMPLETED,
+        Manifest.permission.HIGH_SAMPLING_RATE_SENSORS};
 
         //       if (mAudibleWarning)
         //         soundUri = Uri.parse("android.resource://" + getPackageName() + "/raw/warning");
@@ -734,9 +743,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             //TODO
         } else if ((!messageEventPath.isEmpty()) && Constants.GLOBAL_CONSTANTS.MESSAGE_OSD_FUNCTION_RESTART.equals(messageEventPath)) {
             if (sensorsActive) unBindSensorListeners();
-            if (calculateStaticTimings())
+            if (calculateStaticTimings() && !isCharging()) {
                 bindSensorListeners();
-            else return;
+            }
+            else {
+                Log.d(TAG,"onMessageReceived(): is charging detected. Not initialising sensors");
+                return;
+            }
             //TODO
         } else if (!messageEventPath.isEmpty() && Constants.ACTION.STOP_WEAR_SD_ACTION.equals(messageEventPath)) {
             mUtil.stopServer();
@@ -746,9 +759,10 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             try {
                 mSdData.fromJSON(s1);
                 mSdDataSettings = mSdData;
-                if (calculateStaticTimings())
-                    bindSensorListeners();
-                else return;
+                if (!calculateStaticTimings() || isCharging()) {
+                    Log.d(TAG,"onMessageReceived(): is charging detected. Not initialising sensors");
+                    return;
+                }
                 prefValHrAlarmActive = mSdData.mHRAlarmActive;
                 if (!Objects.equals(mNodeFullName, null))
                     if (mNodeFullName.isEmpty()) {
@@ -798,9 +812,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
                 mSdData = sdData;
                 mSdDataSettings = sdData;
-                if (calculateStaticTimings())
+                if (sensorsActive) unBindSensorListeners();
+                if (calculateStaticTimings() && !isCharging())
                     bindSensorListeners();
-                else return;
+                else {
+                    Log.d(TAG,"onMessageReceived(): is charging detected. Not initialising sensors");
+                    return;
+                }
 
             } catch (Exception e) {
                 Log.e(TAG, "onMessageReceived()", e);
@@ -900,12 +918,18 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
         }
         if (mSdDataSettings.mDefaultSampleCount<=2||mSdDataSettings.analysisPeriod<=1||
                 mSdData.mDefaultSampleCount<=2||mSdData.analysisPeriod<=1||
-                mSdData.mNsamp <=10 || mSdData.dT < 3*10e-4) {
+                mSdData.dT < 3*10e-5) {
             Log.d(TAG,"CalculateStaticTimings(): Returning false due to non-set SD-Settings");
             return false;
         }
-        mSdData.mSampleFreq = (long) (((double)mSdData.mNsamp) / mSdData.dT);
-
+        if (mSdData.mSampleFreq < 1|| mSdData.mNsamp <= mSdData.mDefaultSampleCount) {
+            mCurrentMaxSampleCount = Constants.SD_SERVICE_CONSTANTS.defaultSampleCount;
+            mSdData.mSampleFreq = (long)( ((double)mCurrentMaxSampleCount) / (double)(mSdData.dT * 10e3));
+        }
+        else
+            mSdData.mSampleFreq = (long) (((double)mSdData.mNsamp) / mSdData.dT);
+        if (mSdData.mSampleFreq < 1)
+            return false;
         long newmSampleFreq = (long) ((double)mCurrentMaxSampleCount / mSdData.dT);
         // now we have mSampleFreq in number samples / second (Hz) as default.
         // to calculate sampleTimeUs: (1 / mSampleFreq) * 1000 [1s == 1000000us]
@@ -997,6 +1021,14 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     mSensorManager.registerListener(this, mHeartSensor, SensorManager.SENSOR_DELAY_UI);
                     mStationaryDetectSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STATIONARY_DETECT);
                     mSensorManager.registerListener(this, mStationaryDetectSensor, SensorManager.SENSOR_DELAY_UI);
+                    if (!inOffBodyChangeEvent) {
+                        mOffBodySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT);
+                        mSensorManager.registerListener(this, mOffBodySensor, (int) mSampleTimeUs, (int) mSampleTimeUs * 3);
+                    }
+                    mAmbientTemperatureSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
+                    mSensorManager.registerListener(this,mAmbientTemperatureSensor,60000,30000);
+                    mProximitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+                    mSensorManager.registerListener(this,mProximitySensor,60000,30000);
                     sensorsActive = true;
                     unBindBatteryEvents();
                     bindBatteryEvents();
@@ -1020,8 +1052,16 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
             mSensorManager.unregisterListener(this, mHeartBeatSensor);
         if (Objects.nonNull(mBloodPressure))
             mSensorManager.unregisterListener(this, mBloodPressure);
+        if (Objects.nonNull(mProximitySensor))
+            mSensorManager.unregisterListener(this, mProximitySensor);
+        if (Objects.nonNull(mAmbientTemperatureSensor))
+            mSensorManager.unregisterListener(this, mAmbientTemperatureSensor);
         if (Objects.nonNull(mStationaryDetectSensor))
             mSensorManager.unregisterListener(this, mStationaryDetectSensor);
+        if (Objects.nonNull(mProximitySensor))
+            mSensorManager.unregisterListener(this, mProximitySensor);
+        if (Objects.nonNull(mOffBodySensor)&&!inOffBodyChangeEvent)
+            mSensorManager.unregisterListener(this,mOffBodySensor);
         sensorsActive = false;
     }
 
@@ -1355,17 +1395,18 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                                 mHeartRatesCount = heartRates.size();
                             mHeartRatesCount++;
                             heartRates.add(mSdData.mHR);
-                            if(mHeartRatesCount %10 == 0 ) {
-                                mSdData.mDataType = Constants.GLOBAL_CONSTANTS.dataTypeRaw;
-                                mSdData.haveData = true;
-                                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
-                            }
+
                         }
                         mSdData.mHRAvg = calculateAverage(heartRates);
                         if (heartRates.size() < 4) {
                             mSdData.mHRAvg = 0;
                         }
                         checkAlarm();
+                        if(mHeartRatesCount %10 == 0 ) {
+                            mSdData.mDataType = Constants.GLOBAL_CONSTANTS.dataTypeRaw;
+                            mSdData.haveData = true;
+                            sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
+                        }
                     } else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
                         // we initially start in mMode=0, which calculates the sample frequency returned by the sensor, then enters mMode=1, which is normal operation.
                         if (mMode == 0) {
@@ -1403,7 +1444,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                                 // FIXME - we should do some sort of check and disregard samples with long delays in them.
                                 mSdData.dT = 1e-9 * (event.timestamp - mStartTs);
                                 int sampleFreq = (int) (mSdData.mNsamp / mSdData.dT);
-                                Log.v(TAG, "onSensorChanged(): Collected " + NSAMP + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
+                                Log.v(TAG, "onSensorChanged(): Collected " + mSdData.mNsamp + " data points in " + mSdData.dT + " sec (=" + sampleFreq + " Hz) - analysing...");
 
                                 // DownSample from the **Hz received frequency to 25Hz and convert to mg.
                                 // FIXME - we should really do this properly rather than assume we are really receiving data at 50Hz.
@@ -1458,6 +1499,26 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                             Log.v(TAG, "onSensorChanged(): ERROR - Mode " + mMode + " unrecognised");
                         }
                     }
+                    else if (event.sensor.getType() == Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT) {
+                        if (Objects.nonNull(event))
+                            if (Objects.nonNull(event.values))
+                                if (event.values.length > 0) {
+                                    isOffBody = event.values[0] == 0d;
+                                    inOffBodyChangeEvent = true;
+                                    if (isOffBody)
+                                        unBindSensorListeners();
+                                    else bindSensorListeners();
+                                    inOffBodyChangeEvent = false;
+                                }
+                        Log.d(TAG, "onSensorChanged(): got " + event.sensor.getType() + " as typeid of sensor and string: " + event.sensor.getName() + "and its value(s) " + event.values);
+
+                    }
+                    else if (true && (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER && event.sensor.getType() != Sensor.TYPE_HEART_RATE))
+                        Log.d(TAG,"onSensorChanged(): got "+event.sensor.getType() + " as typeid of sensor and string: " + event.sensor.getName() + "and its value(s) " + event.values);
+                    else if (event.sensor.isWakeUpSensor())
+                        Log.d(TAG, "onSensorChanged, got is WakeUpSensorEvent");
+                    else if (event.sensor.getType() == Sensor.TYPE_STATIONARY_DETECT)
+                        Log.d(TAG, "onSensorChanged, got is TYPE_STATIONARY_DETECT");
                 } else Log.d(TAG, "onSensorChanged() : is_Charging is true, ignoring sample");
         } finally {
             if (mBound) mUtil.runOnUiThread(() -> {
@@ -1494,11 +1555,13 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
                     inAlarm = true;
                     mSdData.mHRAlarmStanding = true;
                     mAlarmTime = (int) mSdData.alarmTime;
+                    mSdData.alarmPhrase = "Heart rate lower than minThreshold";
                 }
             if (mSdData.mHRAlarmActive && mSdData.mHRAvg != 0d && mSdData.mHR > mSdData.mHRAvg * mHeartPercentThresh) {
                 inAlarm = true;
                 mAlarmTime = (int) mSdData.alarmTime;
                 mSdData.mHRAlarmStanding = true;
+                mSdData.alarmPhrase = "Heart rate higher than minThreshold";
             }
             //Log.v(TAG, "checkAlarm() roiPower " + mSdData.roiPower + " roiRaTIO " + mSdData.roiRatio);
         }
@@ -1510,6 +1573,7 @@ public class AWSdService extends RemoteWorkerService implements SensorEventListe
 
             if (alarmHoldOfTime > mSdData.alarmTime) {
                 mSdData.alarmState = 2;
+                sendMessage(Constants.GLOBAL_CONSTANTS.MESSAGE_ITEM_OSD_DATA, mSdData.toDataString(true));
                 long[] pattern = {0, 100, 200, 300};
                 mVibe.vibrate(pattern, -1);
             } else if (alarmCount > 2) {

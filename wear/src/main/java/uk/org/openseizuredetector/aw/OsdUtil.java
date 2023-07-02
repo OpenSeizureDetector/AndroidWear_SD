@@ -202,7 +202,6 @@ public class OsdUtil {
     public void stopServer() {
         Log.i(TAG, "OsdUtil.stopServer() - stopping Server... - mNbound=" + mNbound);
         writeToSysLogFile("stopserver() - stopping server");
-
         // then send an Intent to stop the service.
         Intent mServiceIntent;
         mServiceIntent = new Intent(mContext, AWSdService.class);

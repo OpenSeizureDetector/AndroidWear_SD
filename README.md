@@ -36,7 +36,8 @@ All code is licenced under GPL Version 3, unless stated otherwise within the cod
 
 ## Credits
 The following libraries and other media are used in AndroidWear_SD
-* xxxx
+* https://github.com/philipplackner/SensorGuide/ 
+  as tutorial in correctly addressing sensors. 
 * xxxx
 
 ## Special dedications:
@@ -50,3 +51,9 @@ The following libraries and other media are used in AndroidWear_SD
    diagnosis of Epilepsy and in my case previous only 9n DSM-IV and behavioral test based ASD, 
    without a possibility of building up a (family) life and or even a career.
    
+## Warnings / Considerations:
+    It appears in general medical applications if used as such must go through certification.
+    Every note must here be repeated in waranty and liability:
+    Dutch or European law cover a vast amound testing and certification to be done, before
+    apps may be entitled medical. For the time officical certifiaction is not in place. 
+    Usage of this app should be done with caution.

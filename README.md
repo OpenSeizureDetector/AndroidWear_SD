@@ -30,6 +30,15 @@ The App contains the following major classes to provide the required functionali
   and re-connect the watch - accept the prompt on the watch to enable adb debugging.
 * Indroid studio select the "wear" module and run it - you should get a "hello world" message on the screen.
 
+To use the AndroidWear_SD with OpenSeizureDetector, do the following (Thank you, Bram for the instructions - I will validate these and update as necssary):
+* Create emulator Pixel Pro 7 virtual device (has play services and play store)
+* Create emulator Wear OS Large Round Android 11 wear os3
+* Install Wear OS Companion app in emulator pixel pro 7
+* click on 3 dotted column -> pair wearable
+* Follow the wizard.
+* Install now (by debug) the Pebble SD and Wear Receiver into the Pixel Pro 7 emulator
+* Install now (by debug) Android_Wear_SD in the Wear OS Large Round emulator.
+
 
 ## Licence
 All code is licenced under GPL Version 3, unless stated otherwise within the code.
